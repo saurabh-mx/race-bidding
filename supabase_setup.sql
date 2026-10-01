@@ -24,6 +24,15 @@ CREATE TABLE bids (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
+-- 3.5 Create the audit_logs table
+CREATE TABLE audit_logs (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  action TEXT NOT NULL,
+  details TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
 -- 4. Set up Row Level Security (RLS) for ABAC
 
 -- Enable RLS on all tables
@@ -53,6 +62,11 @@ CREATE POLICY "Bids are viewable by everyone" ON bids FOR SELECT USING (true);
 
 CREATE POLICY "Authenticated users can insert bids" ON bids FOR INSERT 
 WITH CHECK (auth.role() = 'authenticated');
+
+-- Audit Logs: Admins can view, authenticated users can insert
+ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Admins can view audit logs" ON audit_logs FOR SELECT USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
+CREATE POLICY "Authenticated users can insert audit logs" ON audit_logs FOR INSERT WITH CHECK (auth.role() = 'authenticated');
 
 -- 5. Enable Real-time for racers and bids
 -- This allows our frontend dashboard to subscribe to live updates

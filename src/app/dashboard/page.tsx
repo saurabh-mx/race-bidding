@@ -88,6 +88,12 @@ export default function Dashboard() {
       await supabase.from('racers')
         .update({ current_bid: amount })
         .eq('id', racerId);
+        
+      await supabase.from('audit_logs').insert([{
+        user_id: userId,
+        action: 'PLACE_BID',
+        details: `Placed a bid of $${amount} on racer ${racer?.name} (ID: ${racerId})`
+      }]);
     } else {
       console.error(bidError);
       alert("Transaction failed.");

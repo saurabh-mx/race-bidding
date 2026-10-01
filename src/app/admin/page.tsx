@@ -12,10 +12,19 @@ type Profile = {
   role: Role;
 };
 
+type AuditLog = {
+  id: string;
+  user_id: string;
+  action: string;
+  details: string;
+  created_at: string;
+};
+
 export default function AdminPage() {
   const router = useRouter();
   const [role, setRole] = useState<Role | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [logs, setLogs] = useState<AuditLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -46,6 +55,15 @@ export default function AdminPage() {
         .order('login_id', { ascending: true });
         
       if (allProfiles) setProfiles(allProfiles);
+
+      const { data: allLogs } = await supabase
+        .from('audit_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50);
+        
+      if (allLogs) setLogs(allLogs);
+
       setIsLoading(false);
     };
 
@@ -68,6 +86,17 @@ export default function AdminPage() {
       // Revert if error
       const { data: oldProfiles } = await supabase.from('profiles').select('*').order('login_id');
       if (oldProfiles) setProfiles(oldProfiles);
+    } else {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        const newLog = {
+          user_id: session.user.id,
+          action: 'ROLE_UPDATE',
+          details: `Changed role of user ${profileId} to ${newRole}`
+        };
+        await supabase.from('audit_logs').insert([newLog]);
+        setLogs(prev => [{...newLog, id: Date.now().toString(), created_at: new Date().toISOString()} as AuditLog, ...prev]);
+      }
     }
   };
 
@@ -115,7 +144,7 @@ export default function AdminPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', textAlign: 'left' }}>
-                <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)' }}>PILOT_ID</th>
+                <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)' }}>EMAIL_ID</th>
                 <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)' }}>USER_ID</th>
                 <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)' }}>CURRENT_ROLE</th>
                 <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)' }}>ACTIONS</th>
@@ -154,6 +183,47 @@ export default function AdminPage() {
               ))}
             </tbody>
           </table>
+        </div>
+
+        <div className="animate-in" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: '4rem', marginBottom: '2rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '1rem' }}>
+          <div>
+            <h2 className="title-gradient" style={{ fontSize: '2rem', textTransform: 'uppercase' }}>System Audit Logs</h2>
+          </div>
+        </div>
+
+        <div className="glass-panel animate-in" style={{ padding: '2rem' }}>
+          {logs.length === 0 ? (
+            <p className="text-mono" style={{ color: 'var(--text-muted)' }}>NO AUDIT LOGS FOUND.</p>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', textAlign: 'left' }}>
+                  <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)' }}>TIMESTAMP</th>
+                  <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)' }}>ACTION</th>
+                  <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)' }}>DETAILS</th>
+                  <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)' }}>ACTOR_ID</th>
+                </tr>
+              </thead>
+              <tbody>
+                {logs.map(log => (
+                  <tr key={log.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                    <td className="text-mono" style={{ padding: '1rem', fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)' }}>
+                      {new Date(log.created_at).toLocaleString()}
+                    </td>
+                    <td className="text-mono" style={{ padding: '1rem', color: '#ff2a2a', fontWeight: 'bold' }}>
+                      {log.action}
+                    </td>
+                    <td style={{ padding: '1rem', fontSize: '0.9rem' }}>
+                      {log.details}
+                    </td>
+                    <td className="text-mono" style={{ padding: '1rem', fontSize: '0.65rem', color: 'rgba(255,255,255,0.3)' }}>
+                      {log.user_id}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
     </main>

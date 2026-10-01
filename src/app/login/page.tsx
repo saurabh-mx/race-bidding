@@ -98,13 +98,13 @@ export default function LoginPage() {
           <form onSubmit={handleAuth} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               <label htmlFor="loginId" className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 700 }}>
-                &gt; PILOT_ID
+                &gt; EMAIL_ID
               </label>
               <input 
                 id="loginId"
                 type="text" 
                 className="input-base" 
-                placeholder="e.g. RACER-8842" 
+                placeholder="e.g. yourname@domain.com" 
                 value={loginId}
                 onChange={(e) => setLoginId(e.target.value)}
                 required
