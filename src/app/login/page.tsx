@@ -19,7 +19,7 @@ export default function LoginPage() {
     setErrorMsg(null);
     
     const cleanId = loginId.toLowerCase().trim();
-    const pseudoEmail = cleanId.includes('@') ? cleanId : `${cleanId}@racebid.local`;
+    const pseudoEmail = cleanId.includes('@') ? cleanId : `${cleanId}@racebid.com`;
 
     try {
       if (isSignUp) {
@@ -37,7 +37,7 @@ export default function LoginPage() {
           
           if (profileError) {
              console.error('Profile creation failed', profileError);
-             throw new Error('Failed to create user profile in the database.');
+             throw new Error(profileError.message || 'Failed to create user profile in the database.');
           }
         }
       } else {
