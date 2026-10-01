@@ -70,3 +70,22 @@ INSERT INTO racers (name, type, current_bid, status) VALUES
 ('Max V.', 'INDIVIDUAL', 8900, 'ACTIVE'),
 ('Lewis H.', 'INDIVIDUAL', 9200, 'ACTIVE'),
 ('Amateur Cup (Week 42)', 'WEEKLY', 1200, 'ACTIVE');
+
+-- 7. Trigger to automatically create profiles for new users (Email & OAuth)
+CREATE OR REPLACE FUNCTION public.handle_new_user() 
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.profiles (id, login_id, role)
+  VALUES (
+    NEW.id,
+    COALESCE(NEW.raw_user_meta_data->>'login_id', NEW.email),
+    'viewer'
+  );
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();

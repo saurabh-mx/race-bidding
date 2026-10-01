@@ -180,13 +180,16 @@ export default function Dashboard() {
     <main style={{ paddingBottom: '4rem' }}>
       <header className="glass-header">
         <Link href="/" style={{ textDecoration: 'none' }}>
-           <h1 className="title-gradient" style={{ fontSize: '1.5rem', color: '#f21818' }}>RACEBID.</h1>
+           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+             <img src="/logo.png" alt="Race Bidding" style={{ height: '50px', width: 'auto', borderRadius: '50%' }} />
+             <h1 className="title-gradient" style={{ fontSize: '1.5rem', color: '#f21818' }}>RACEBID.</h1>
+           </div>
         </Link>
         <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
           <div className="text-mono" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
             <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>OPERATOR STATUS</span>
-            <span style={{ fontSize: '0.85rem', color: role === 'admin' ? '#ff2a2a' : role === 'management' ? 'var(--accent-secondary)' : '#fff', fontWeight: 700 }}>
-              {role === 'admin' ? 'CLASS A (ADMIN)' : role === 'management' ? 'CLASS O (OVERSIGHT)' : 'CLASS I (SPECTATOR)'}
+            <span style={{ fontSize: '0.85rem', color: role === 'admin' ? '#ff2a2a' : role === 'management' ? 'var(--accent-secondary)' : '#fff', fontWeight: 700, textTransform: 'uppercase' }}>
+              {role || 'UNKNOWN'}
             </span>
           </div>
           {role === 'admin' && (

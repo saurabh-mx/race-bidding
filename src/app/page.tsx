@@ -6,9 +6,12 @@ export default function LandingPage() {
   return (
     <main className="soulgrid-main">
       <nav className="soulgrid-nav">
-        <div className="logo-container">
-          <span className="logo-text">RACE<span className="logo-highlight">BID</span></span>
-          <span className="logo-subtext">BID FOR THE GRID</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <img src="/logo.png" alt="Race Bidding" style={{ height: '50px', width: 'auto', borderRadius: '50%' }} />
+          <div className="logo-container">
+            <span className="logo-text">RACE<span className="logo-highlight">BID</span></span>
+            <span className="logo-subtext">BID FOR THE GRID</span>
+          </div>
         </div>
         <div className="nav-links">
           <Link href="#">TEAMS</Link>
