@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 
-type Role = 'VIEWER' | 'MANAGEMENT';
+type Role = 'viewer' | 'management' | 'admin';
 
 type Racer = {
   id: string;
@@ -159,7 +159,7 @@ export default function Dashboard() {
           </button>
         )}
         
-        {role === 'MANAGEMENT' && (
+        {role === 'management' && (
           <button className="btn-secondary" style={{ flex: '0 0 auto', padding: '0.85rem 1rem' }} onClick={() => alert("OVERSIGHT Edit Mode Triggered")}>
             EDIT
           </button>
@@ -185,10 +185,15 @@ export default function Dashboard() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
           <div className="text-mono" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
             <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>OPERATOR STATUS</span>
-            <span style={{ fontSize: '0.85rem', color: role === 'MANAGEMENT' ? 'var(--accent-secondary)' : '#fff', fontWeight: 700 }}>
-              {role === 'MANAGEMENT' ? 'CLASS O (OVERSIGHT)' : 'CLASS I (SPECTATOR)'}
+            <span style={{ fontSize: '0.85rem', color: role === 'admin' ? '#ff2a2a' : role === 'management' ? 'var(--accent-secondary)' : '#fff', fontWeight: 700 }}>
+              {role === 'admin' ? 'CLASS A (ADMIN)' : role === 'management' ? 'CLASS O (OVERSIGHT)' : 'CLASS I (SPECTATOR)'}
             </span>
           </div>
+          {role === 'admin' && (
+            <Link href="/admin" className="btn-secondary" style={{ padding: '0.5rem 1rem', fontSize: '0.75rem', textDecoration: 'none' }}>
+              ADMIN PANEL
+            </Link>
+          )}
           <button className="btn-secondary" onClick={handleLogout} style={{ padding: '0.5rem 1rem', fontSize: '0.75rem' }}>
             DISCONNECT
           </button>
@@ -205,7 +210,7 @@ export default function Dashboard() {
             </p>
           </div>
           
-          {role === 'MANAGEMENT' && (
+          {role === 'management' && (
             <button className="btn-primary" style={{ background: '#fff', color: '#000', boxShadow: '0 0 15px rgba(255,255,255,0.3)' }}>
               + INITIALIZE NEW ENTITY
             </button>

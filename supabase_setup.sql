@@ -2,7 +2,7 @@
 CREATE TABLE profiles (
   id UUID REFERENCES auth.users(id) PRIMARY KEY,
   login_id TEXT UNIQUE NOT NULL,
-  role TEXT NOT NULL DEFAULT 'VIEWER' CHECK (role IN ('VIEWER', 'MANAGEMENT'))
+  role TEXT NOT NULL DEFAULT 'viewer' CHECK (role IN ('viewer', 'management', 'admin'))
 );
 
 -- 2. Create the racers table
@@ -34,18 +34,19 @@ ALTER TABLE bids ENABLE ROW LEVEL SECURITY;
 -- Profiles: Users can read all profiles, but only update their own (or let Management update them)
 CREATE POLICY "Public profiles are viewable by everyone" ON profiles FOR SELECT USING (true);
 CREATE POLICY "Users can insert their own profile" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
+CREATE POLICY "Admins can update all profiles" ON profiles FOR UPDATE USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
 
 -- Racers: Anyone can view racers. Only Management can insert/update/delete racers.
 CREATE POLICY "Racers are viewable by everyone" ON racers FOR SELECT USING (true);
 
 CREATE POLICY "Management can insert racers" ON racers FOR INSERT 
-WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'MANAGEMENT'));
+WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'management'));
 
 CREATE POLICY "Management can update racers" ON racers FOR UPDATE 
-USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'MANAGEMENT'));
+USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'management'));
 
 CREATE POLICY "Management can delete racers" ON racers FOR DELETE 
-USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'MANAGEMENT'));
+USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'management'));
 
 -- Bids: Anyone can view bids. Authenticated users can insert bids.
 CREATE POLICY "Bids are viewable by everyone" ON bids FOR SELECT USING (true);

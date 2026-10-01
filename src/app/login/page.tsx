@@ -32,7 +32,7 @@ export default function LoginPage() {
 
         if (authData.user) {
           const { error: profileError } = await supabase.from('profiles').insert([
-            { id: authData.user.id, login_id: loginId, role: 'VIEWER' }
+            { id: authData.user.id, login_id: loginId, role: 'viewer' }
           ]);
           
           if (profileError) {
