@@ -1,0 +1,209 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Outfit:ital,wght@0,400;0,700;0,900;1,800;1,900&display=swap');
+
+.soulgrid-main {
+  min-height: 100vh;
+  background-color: #1a0a0a;
+  background-image: 
+    radial-gradient(circle at 30% 50%, rgba(90, 15, 15, 0.4) 0%, transparent 60%),
+    linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 100% 100%, 60px 60px, 60px 60px;
+  background-position: center, center, center;
+  color: #fff;
+  font-family: 'Outfit', sans-serif;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Navigation */
+.soulgrid-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2rem 4rem;
+  z-index: 10;
+}
+
+.logo-container {
+  display: flex;
+  flex-direction: column;
+}
+
+.logo-text {
+  font-size: 2rem;
+  font-weight: 900;
+  letter-spacing: -1px;
+  line-height: 1;
+}
+
+.logo-highlight {
+  color: #f21818;
+}
+
+.logo-subtext {
+  font-size: 0.6rem;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 2px;
+  color: #aaa;
+  margin-top: 2px;
+}
+
+.nav-links {
+  display: flex;
+  gap: 2.5rem;
+}
+
+.nav-links a {
+  color: #fff;
+  text-decoration: none;
+  font-weight: 800;
+  font-size: 0.9rem;
+  letter-spacing: 1px;
+  transition: color 0.3s;
+}
+
+.nav-links a:hover {
+  color: #f21818;
+}
+
+/* Main Content */
+.soulgrid-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  z-index: 10;
+  padding-bottom: 5rem;
+}
+
+.live-badge {
+  border: 1px solid rgba(242, 24, 24, 0.4);
+  background: rgba(20, 5, 5, 0.6);
+  color: #f21818;
+  padding: 0.5rem 1.5rem;
+  border-radius: 50px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 2rem;
+}
+
+.pulse-dot {
+  width: 6px;
+  height: 6px;
+  background-color: #f21818;
+  border-radius: 50%;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(242, 24, 24, 0.7); }
+  70% { box-shadow: 0 0 0 10px rgba(242, 24, 24, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(242, 24, 24, 0); }
+}
+
+.hero-text-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 2.5rem;
+}
+
+.hero-title {
+  font-size: 5.5rem;
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: -2px;
+  line-height: 0.9;
+  text-shadow: 4px 4px 15px rgba(0,0,0,0.8);
+  margin: 0;
+}
+
+.hero-title-red {
+  font-size: 5.5rem;
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: -2px;
+  line-height: 1;
+  color: #f21818;
+  text-shadow: 4px 4px 15px rgba(0,0,0,0.8);
+  margin: 0;
+}
+
+.hero-subtitle {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.85rem;
+  color: #bbb;
+  letter-spacing: 2px;
+  line-height: 1.8;
+  margin-top: 1.5rem;
+  text-shadow: 1px 1px 5px rgba(0,0,0,1);
+}
+
+.action-buttons {
+  display: flex;
+  gap: 1rem;
+}
+
+.btn-soulgrid-primary {
+  background: #f21818;
+  color: #fff;
+  text-decoration: none;
+  font-weight: 900;
+  font-style: italic;
+  font-size: 1.1rem;
+  padding: 1rem 2rem;
+  border-radius: 4px;
+  box-shadow: 0 4px 20px rgba(242, 24, 24, 0.4);
+  transition: all 0.3s ease;
+  letter-spacing: 1px;
+}
+
+.btn-soulgrid-primary:hover {
+  background: #ff3333;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 25px rgba(242, 24, 24, 0.6);
+}
+
+.btn-soulgrid-secondary {
+  background: transparent;
+  color: #fff;
+  text-decoration: none;
+  font-weight: 900;
+  font-style: italic;
+  font-size: 1.1rem;
+  padding: 1rem 2rem;
+  border: 1px solid rgba(255,255,255,0.3);
+  border-radius: 4px;
+  transition: all 0.3s ease;
+  letter-spacing: 1px;
+}
+
+.btn-soulgrid-secondary:hover {
+  border-color: #fff;
+  background: rgba(255,255,255,0.1);
+}
+
+/* Background Car Silhouette */
+.car-silhouette {
+  position: absolute;
+  right: -5%;
+  bottom: -10%;
+  width: 60%;
+  height: 70%;
+  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 400"><path d="M100 300 Q 200 280 300 270 T 500 240 Q 600 200 700 220 Q 750 250 780 300 Z" fill="%23050000" opacity="0.6"/><path d="M400 250 L 700 150 L 750 220 Z" fill="%23050000" opacity="0.8"/></svg>');
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: bottom right;
+  z-index: 1;
+  pointer-events: none;
+  filter: blur(2px) drop-shadow(0 0 50px rgba(0,0,0,0.8));
+}
