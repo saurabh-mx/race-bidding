@@ -18,6 +18,7 @@ type Driver = {
   team_name?: string;
   team_logo?: string;
   racer_role?: string;
+  type?: string;
 };
 
 export default function DriversPage() {
@@ -51,7 +52,7 @@ export default function DriversPage() {
       const { data: driversData } = await supabase
         .from('racers')
         .select('*')
-        .neq('type', 'TEAM')
+        .not('type', 'in', '("TEAM", "MONTHLY_TEAM", "MONTHLY_RACER")')
         .order('name');
         
       const { data: teamsData } = await supabase
