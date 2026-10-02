@@ -52,7 +52,9 @@ export default function DriversPage() {
       const { data: driversData } = await supabase
         .from('racers')
         .select('*')
-        .not('type', 'in', '("TEAM", "MONTHLY_TEAM", "MONTHLY_RACER")')
+        .neq('type', 'TEAM')
+        .neq('type', 'MONTHLY_TEAM')
+        .neq('type', 'MONTHLY_RACER')
         .order('name');
         
       const { data: teamsData } = await supabase
