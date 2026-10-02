@@ -148,8 +148,13 @@ export default function Dashboard() {
     }
 
     const isViewer = role === 'viewer';
+    
+    // Fetch current round_id
+    const { data: settings } = await supabase.from('app_settings').select('current_round_id').single();
+    const roundId = settings?.current_round_id || 1;
+
     const { error: bidError } = await supabase.from('bids').insert([
-      { racer_id: biddingId, user_id: userId, amount, bidder_name: loginId, status: isViewer ? 'PENDING' : 'APPROVED' }
+      { racer_id: biddingId, user_id: userId, amount, bidder_name: loginId, status: isViewer ? 'PENDING' : 'APPROVED', round_id: roundId }
     ]);
 
     if (!bidError) {

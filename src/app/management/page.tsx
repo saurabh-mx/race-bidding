@@ -110,6 +110,8 @@ export default function ManagementPanel() {
         created_at: b.created_at
       }));
       
+      const uniqueRounds = new Set(userBids.map((b: any) => b.round_id));
+      
       return {
         id: p.id,
         login_id: p.login_id,
@@ -118,7 +120,7 @@ export default function ManagementPanel() {
         totalWon,
         totalLost,
         netPL,
-        betCount: userBids.length,
+        betCount: uniqueRounds.size,
         bets
       };
     });
@@ -242,7 +244,7 @@ export default function ManagementPanel() {
             <span style={{ textAlign: 'right' }}>WON</span>
             <span style={{ textAlign: 'right' }}>LOST</span>
             <span style={{ textAlign: 'right' }}>NET P&L</span>
-            <span style={{ textAlign: 'right' }}>BETS</span>
+            <span style={{ textAlign: 'right' }}>ROUNDS</span>
           </div>
 
           {filteredUsers.length === 0 ? (

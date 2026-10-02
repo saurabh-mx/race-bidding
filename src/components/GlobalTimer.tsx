@@ -216,6 +216,10 @@ export function GlobalTimer() {
       updateData.latest_racer_winner = formattedWinner;
     }
 
+    const { data: settings } = await supabase.from('app_settings').select('current_round_id').single();
+    const newRoundId = (settings?.current_round_id || 1) + 1;
+    updateData.current_round_id = newRoundId;
+
     await supabase.from('app_settings').update(updateData).eq('id', 1);
     
     // Auto unpost and reset bids to zero for fresh start
