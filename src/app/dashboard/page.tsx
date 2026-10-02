@@ -465,13 +465,13 @@ export default function Dashboard() {
         )}
 
         <div className="grid-3">
-          {data.filter(r => r.is_posted === true && (activeTab === 'ALL' || (activeTab === 'INDIVIDUAL' && r.type !== 'TEAM' && !r.type.startsWith('MONTHLY_')) || (activeTab === 'MONTHLY' && r.type === (monthlySubTab === 'TEAM' ? 'MONTHLY_TEAM' : 'MONTHLY_RACER')) || r.type === activeTab)).length === 0 ? (
+          {data.filter(r => r.is_posted === true && ((activeTab === 'ALL' && !r.type.startsWith('MONTHLY_')) || (activeTab === 'INDIVIDUAL' && r.type !== 'TEAM' && !r.type.startsWith('MONTHLY_')) || (activeTab === 'MONTHLY' && r.type === (monthlySubTab === 'TEAM' ? 'MONTHLY_TEAM' : 'MONTHLY_RACER')) || r.type === activeTab)).length === 0 ? (
              <div className="glass-panel text-mono animate-in" style={{ gridColumn: '1 / -1', padding: '4rem', textAlign: 'center', color: 'var(--text-muted)' }}>
                 NO ACTIVE BETS DETECTED.<br/><br/>
                 AWAITING MANAGEMENT TO POST BETS.
              </div>
           ) : (
-            data.filter(r => r.is_posted === true && (activeTab === 'ALL' || (activeTab === 'INDIVIDUAL' && r.type !== 'TEAM' && !r.type.startsWith('MONTHLY_')) || (activeTab === 'MONTHLY' && r.type === (monthlySubTab === 'TEAM' ? 'MONTHLY_TEAM' : 'MONTHLY_RACER')) || r.type === activeTab)).map((racer, idx) => renderCard(racer, idx))
+            data.filter(r => r.is_posted === true && ((activeTab === 'ALL' && !r.type.startsWith('MONTHLY_')) || (activeTab === 'INDIVIDUAL' && r.type !== 'TEAM' && !r.type.startsWith('MONTHLY_')) || (activeTab === 'MONTHLY' && r.type === (monthlySubTab === 'TEAM' ? 'MONTHLY_TEAM' : 'MONTHLY_RACER')) || r.type === activeTab)).map((racer, idx) => renderCard(racer, idx))
           )}
         </div>
       </div>
