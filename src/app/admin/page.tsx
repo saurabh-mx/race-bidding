@@ -1,8 +1,9 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
+import { useModal } from '@/components/ModalProvider';
 
 type Role = 'viewer' | 'management' | 'admin';
 
@@ -20,12 +21,39 @@ type AuditLog = {
   created_at: string;
 };
 
+type LoginLog = {
+  id: string;
+  user_id: string;
+  created_at: string;
+};
+
+type Racer = {
+  id: string;
+  name: string;
+  type: string;
+};
+
+type Bid = {
+  id: string;
+  amount: number;
+  racer_id: string;
+  bidder_name: string;
+  profiles: {
+    login_id: string;
+  };
+};
+
 export default function AdminPage() {
   const router = useRouter();
   const [role, setRole] = useState<Role | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [loginLogs, setLoginLogs] = useState<LoginLog[]>([]);
+  const [racers, setRacers] = useState<Racer[]>([]);
+  const [bids, setBids] = useState<Bid[]>([]);
+  const [winningRacerId, setWinningRacerId] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
+  const { showError } = useModal();
 
   useEffect(() => {
     const init = async () => {
@@ -64,11 +92,64 @@ export default function AdminPage() {
         
       if (allLogs) setLogs(allLogs);
 
+      const { data: allLoginLogs } = await supabase
+        .from('login_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50);
+        
+      if (allLoginLogs) setLoginLogs(allLoginLogs);
+
+      if (allLoginLogs) setLoginLogs(allLoginLogs);
+
+      const { data: allRacers } = await supabase.from('racers').select('id, name, type').order('name', { ascending: true });
+      if (allRacers) setRacers(allRacers);
+      
+      const { data: allBids } = await supabase.from('bids').select('id, amount, racer_id, bidder_name, profiles(login_id)');
+      // @ts-expect-error
+      if (allBids) setBids(allBids);
+
       setIsLoading(false);
     };
 
     init();
   }, [router]);
+
+  const payouts = useMemo(() => {
+    if (!winningRacerId) return null;
+    
+    // Calculate winning pool
+    const winningBids = bids.filter(b => b.racer_id === winningRacerId);
+    const winningPool = winningBids.reduce((sum, b) => sum + b.amount, 0);
+    
+    // Calculate losing pool
+    const losingBids = bids.filter(b => b.racer_id !== winningRacerId);
+    const losingPool = losingBids.reduce((sum, b) => sum + b.amount, 0);
+    
+    const houseEdge = losingPool * 0.5;
+    const distributedPool = losingPool - houseEdge;
+    
+    const bettors = winningBids.map(bid => {
+      const share = winningPool > 0 ? (bid.amount / winningPool) : 0;
+      const profit = share * distributedPool;
+      const totalPayout = bid.amount + profit;
+      return {
+        id: bid.id,
+        name: bid.bidder_name || (bid.profiles as any)?.login_id || 'Unknown',
+        betAmount: bid.amount,
+        profit,
+        totalPayout
+      };
+    });
+    
+    return {
+      winningPool,
+      losingPool,
+      houseEdge,
+      distributedPool,
+      bettors: bettors.sort((a, b) => b.totalPayout - a.totalPayout)
+    };
+  }, [bids, winningRacerId]);
 
   const handleRoleChange = async (profileId: string, newRole: Role) => {
     // Update local state optimistically
@@ -82,7 +163,7 @@ export default function AdminPage() {
 
     if (error) {
       console.error(error);
-      alert('Failed to update role: ' + error.message);
+      showError('Update Failed', 'Failed to update role: ' + error.message);
       // Revert if error
       const { data: oldProfiles } = await supabase.from('profiles').select('*').order('login_id');
       if (oldProfiles) setProfiles(oldProfiles);
@@ -113,9 +194,9 @@ export default function AdminPage() {
       <header className="glass-header">
         <Link href="/dashboard" style={{ textDecoration: 'none' }}>
            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-             <img src="/logo.png" alt="Race Bidding" style={{ height: '50px', width: 'auto', borderRadius: '50%' }} />
+             <img src="/logo.png" alt="Race Betting" style={{ height: '50px', width: 'auto', borderRadius: '50%' }} />
              <h1 className="title-gradient" style={{ fontSize: '1.5rem', color: '#f21818' }}>
-               RACEBID. <span className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '1rem', fontWeight: 'bold' }}>&lt; DASHBOARD</span>
+               RACEBET. <span className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '1rem', fontWeight: 'bold' }}>&lt; DASHBOARD</span>
              </h1>
            </div>
         </Link>
@@ -187,6 +268,82 @@ export default function AdminPage() {
 
         <div className="animate-in" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: '4rem', marginBottom: '2rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '1rem' }}>
           <div>
+            <h2 className="title-gradient" style={{ fontSize: '2rem', textTransform: 'uppercase' }}>Payout Calculator</h2>
+            <p className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.5rem', letterSpacing: '1px' }}>
+              RESOLVE RACE & DISTRIBUTE POOLS
+            </p>
+          </div>
+        </div>
+
+        <div className="glass-panel animate-in" style={{ padding: '2rem' }}>
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '2rem' }}>
+            <label className="text-mono" style={{ color: 'var(--text-muted)', fontWeight: 'bold' }}>SELECT WINNER:</label>
+            <select 
+              className="input-base text-mono" 
+              value={winningRacerId}
+              onChange={(e) => setWinningRacerId(e.target.value)}
+              style={{ width: '300px', background: 'rgba(0,0,0,0.5)', padding: '0.5rem' }}
+            >
+              <option value="">-- CHOOSE WINNING RACER --</option>
+              {racers.map(racer => (
+                <option key={racer.id} value={racer.id}>{racer.name} ({racer.type})</option>
+              ))}
+            </select>
+          </div>
+
+          {payouts ? (
+            <div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+                <div style={{ padding: '1rem', background: 'rgba(255,255,255,0.05)', borderRadius: '8px' }}>
+                  <p className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>WINNING POOL</p>
+                  <p style={{ fontSize: '2rem', fontWeight: 900, color: '#fff' }}>${payouts.winningPool.toLocaleString()}</p>
+                </div>
+                <div style={{ padding: '1rem', background: 'rgba(255,255,255,0.05)', borderRadius: '8px' }}>
+                  <p className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>LOSING POOL</p>
+                  <p style={{ fontSize: '2rem', fontWeight: 900, color: 'var(--text-muted)' }}>${payouts.losingPool.toLocaleString()}</p>
+                </div>
+                <div style={{ padding: '1rem', background: 'rgba(242,24,24,0.1)', borderRadius: '8px', border: '1px solid rgba(242,24,24,0.3)' }}>
+                  <p className="text-mono" style={{ color: '#f21818', fontSize: '0.75rem' }}>HOUSE EDGE (50%)</p>
+                  <p style={{ fontSize: '2rem', fontWeight: 900, color: '#f21818' }}>${payouts.houseEdge.toLocaleString()}</p>
+                </div>
+                <div style={{ padding: '1rem', background: 'rgba(0,255,136,0.1)', borderRadius: '8px', border: '1px solid rgba(0,255,136,0.3)' }}>
+                  <p className="text-mono" style={{ color: '#00ff88', fontSize: '0.75rem' }}>DISTRIBUTED TO WINNERS</p>
+                  <p style={{ fontSize: '2rem', fontWeight: 900, color: '#00ff88' }}>${payouts.distributedPool.toLocaleString()}</p>
+                </div>
+              </div>
+
+              {payouts.bettors.length === 0 ? (
+                <p className="text-mono" style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>NO BETS PLACED ON THIS RACER.</p>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', textAlign: 'left' }}>
+                      <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)' }}>BETTOR NAME / CID</th>
+                      <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)', textAlign: 'right' }}>INITIAL BET</th>
+                      <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)', textAlign: 'right' }}>PROFIT</th>
+                      <th className="text-mono" style={{ padding: '1rem', color: '#00ff88', textAlign: 'right' }}>TOTAL PAYOUT</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {payouts.bettors.map(bettor => (
+                      <tr key={bettor.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                        <td className="text-mono" style={{ padding: '1rem', color: '#fff', fontWeight: 'bold' }}>{bettor.name}</td>
+                        <td className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)', textAlign: 'right' }}>${bettor.betAmount.toLocaleString()}</td>
+                        <td className="text-mono" style={{ padding: '1rem', color: 'rgba(255,255,255,0.8)', textAlign: 'right' }}>+${Math.floor(bettor.profit).toLocaleString()}</td>
+                        <td className="text-mono" style={{ padding: '1rem', color: '#00ff88', textAlign: 'right', fontWeight: 900, fontSize: '1.25rem' }}>${Math.floor(bettor.totalPayout).toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          ) : (
+            <p className="text-mono" style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>SELECT A WINNING RACER TO CALCULATE PAYOUTS.</p>
+          )}
+        </div>
+
+        <div className="animate-in" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: '4rem', marginBottom: '2rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '1rem' }}>
+          <div>
             <h2 className="title-gradient" style={{ fontSize: '2rem', textTransform: 'uppercase' }}>System Audit Logs</h2>
           </div>
         </div>
@@ -221,6 +378,42 @@ export default function AdminPage() {
                     </td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <div className="animate-in" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: '4rem', marginBottom: '2rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '1rem' }}>
+          <div>
+            <h2 className="title-gradient" style={{ fontSize: '2rem', textTransform: 'uppercase' }}>Login Audit</h2>
+          </div>
+        </div>
+
+        <div className="glass-panel animate-in" style={{ padding: '2rem' }}>
+          {loginLogs.length === 0 ? (
+            <p className="text-mono" style={{ color: 'var(--text-muted)' }}>NO LOGIN LOGS FOUND.</p>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', textAlign: 'left' }}>
+                  <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)' }}>TIMESTAMP</th>
+                  <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)' }}>PILOT_ID / USER_ID</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loginLogs.map(log => {
+                  const profile = profiles.find(p => p.id === log.user_id);
+                  return (
+                    <tr key={log.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <td className="text-mono" style={{ padding: '1rem', fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)' }}>
+                        {new Date(log.created_at).toLocaleString()}
+                      </td>
+                      <td className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)', fontWeight: 'bold' }}>
+                        {profile?.login_id || log.user_id}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}

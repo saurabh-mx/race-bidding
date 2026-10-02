@@ -1,0 +1,4 @@
+-- Add result tracking columns to bids table
+ALTER TABLE bids ADD COLUMN IF NOT EXISTS result TEXT DEFAULT 'PENDING' CHECK (result IN ('PENDING', 'WON', 'LOST'));
+ALTER TABLE bids ADD COLUMN IF NOT EXISTS payout INTEGER DEFAULT 0;
+ALTER TABLE bids ADD COLUMN IF NOT EXISTS announcement_id UUID;

@@ -7,8 +7,8 @@ export default function PrivacyPolicy() {
       <header className="glass-header" style={{ borderBottom: 'none', background: 'transparent' }}>
         <Link href="/" style={{ textDecoration: 'none' }}>
            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-             <img src="/logo.png" alt="Race Bidding" style={{ height: '50px', width: 'auto', borderRadius: '50%' }} />
-             <h1 className="title-gradient" style={{ fontSize: '1.5rem', color: '#f21818' }}>RACEBID.</h1>
+             <img src="/logo.png" alt="Race Betting" style={{ height: '50px', width: 'auto', borderRadius: '50%' }} />
+             <h1 className="title-gradient" style={{ fontSize: '1.5rem', color: '#f21818' }}>RACEBET.</h1>
            </div>
         </Link>
       </header>
@@ -22,7 +22,7 @@ export default function PrivacyPolicy() {
             
             <section>
               <h2 style={{ color: '#fff', marginBottom: '0.5rem' }}>1. INTRODUCTION</h2>
-              <p>Welcome to RaceBidding. We respect your privacy and are committed to protecting your personal data. This privacy policy will inform you as to how we look after your personal data when you visit our website.</p>
+              <p>Welcome to RaceBetting. We respect your privacy and are committed to protecting your personal data. This privacy policy will inform you as to how we look after your personal data when you visit our website.</p>
             </section>
             
             <section>
@@ -41,7 +41,7 @@ export default function PrivacyPolicy() {
               <ul style={{ paddingLeft: '1.5rem', marginTop: '0.5rem' }}>
                 <li>To register you as a new user.</li>
                 <li>To manage your account and authentication securely.</li>
-                <li>To enable you to participate in the RaceBidding platform.</li>
+                <li>To enable you to participate in the RaceBetting platform.</li>
               </ul>
             </section>
 
