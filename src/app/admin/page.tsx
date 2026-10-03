@@ -156,14 +156,15 @@ export default function AdminPage() {
     setProfiles(prev => prev.map(p => p.id === profileId ? { ...p, role: newRole } : p));
     
     // Update Supabase
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('profiles')
       .update({ role: newRole })
-      .eq('id', profileId);
+      .eq('id', profileId)
+      .select();
 
-    if (error) {
-      console.error(error);
-      showError('Update Failed', 'Failed to update role: ' + error.message);
+    if (error || !data || data.length === 0) {
+      console.error(error || new Error("Update blocked by RLS policies (0 rows updated)"));
+      showError('Update Failed', error ? 'Failed to update role: ' + error.message : 'Role update blocked by permissions.');
       // Revert if error
       const { data: oldProfiles } = await supabase.from('profiles').select('*').order('login_id');
       if (oldProfiles) setProfiles(oldProfiles);
