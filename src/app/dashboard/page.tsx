@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import { useModal } from '@/components/ModalProvider';
+import { verifySecurityCode } from '@/app/actions';
 
 type Role = 'viewer' | 'management' | 'admin';
 
@@ -30,29 +31,43 @@ export default function Dashboard() {
   const [biddingId, setBiddingId] = useState<string | null>(null);
   const [isTeamBettingOpen, setIsTeamBettingOpen] = useState(false);
   const [isIndBettingOpen, setIsIndBettingOpen] = useState(false);
+  const [isMonthlyBettingOpen, setIsMonthlyBettingOpen] = useState(false);
   const [latestTeamWinner, setLatestTeamWinner] = useState<string>('NONE');
   const [latestRacerWinner, setLatestRacerWinner] = useState<string>('NONE');
 
   useEffect(() => {
     const handleTeamBetStatus = (e: any) => setIsTeamBettingOpen(e.detail);
     const handleIndBetStatus = (e: any) => setIsIndBettingOpen(e.detail);
+    const handleMonthlyBetStatus = (e: any) => setIsMonthlyBettingOpen(e.detail);
     window.addEventListener('team-betting-status', handleTeamBetStatus);
     window.addEventListener('ind-betting-status', handleIndBetStatus);
+    window.addEventListener('monthly-betting-status', handleMonthlyBetStatus);
     return () => {
       window.removeEventListener('team-betting-status', handleTeamBetStatus);
       window.removeEventListener('ind-betting-status', handleIndBetStatus);
+      window.removeEventListener('monthly-betting-status', handleMonthlyBetStatus);
     };
   }, []);
   const [bidAmount, setBidAmount] = useState<string>('');
+  const [bettorName, setBettorName] = useState<string>('');
+  const [cid, setCid] = useState<string>('');
+  const [imageLink, setImageLink] = useState<string>('');
   const [loginId, setLoginId] = useState<string>('');
+  const [displayName, setDisplayName] = useState<string>('');
   const [userId, setUserId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'ALL' | 'TEAM' | 'INDIVIDUAL' | 'MONTHLY'>('ALL');
   const [monthlySubTab, setMonthlySubTab] = useState<'TEAM' | 'RACER'>('TEAM');
   const [isLoading, setIsLoading] = useState(true);
+  const [activeRace, setActiveRace] = useState<any>(null);
   
-  const [showSetup, setShowSetup] = useState(false);
-  const [setupCharName, setSetupCharName] = useState('');
-  const [setupCID, setSetupCID] = useState('');
+  const [isSecurityVerified, setIsSecurityVerified] = useState(false);
+  const [securityCodeInput, setSecurityCodeInput] = useState('');
+
+  useEffect(() => {
+    if (sessionStorage.getItem('securityVerified') === 'true') {
+      setIsSecurityVerified(true);
+    }
+  }, []);
 
   const { showError, showConfirm } = useModal();
 
@@ -69,16 +84,14 @@ export default function Dashboard() {
 
       const { data: profile } = await supabase
         .from('profiles')
-        .select('role, login_id')
+        .select('role, login_id, display_name')
         .eq('id', session.user.id)
         .single();
         
       if (profile) {
         setRole(profile.role);
         setLoginId(profile.login_id);
-        if (profile.login_id.includes('@')) {
-          setShowSetup(true);
-        }
+        setDisplayName(profile.display_name || '');
       }
 
       const { data: racers } = await supabase
@@ -90,12 +103,17 @@ export default function Dashboard() {
       
       const { data: settings } = await supabase
         .from('app_settings')
-        .select('latest_team_winner, latest_racer_winner')
+        .select('latest_team_winner, latest_racer_winner, current_round_id')
         .eq('id', 1)
         .single();
       if (settings) {
         if (settings.latest_team_winner) setLatestTeamWinner(settings.latest_team_winner);
         if (settings.latest_racer_winner) setLatestRacerWinner(settings.latest_racer_winner);
+        
+        if (settings.current_round_id) {
+          const { data: raceInfo } = await supabase.from('races').select('*').eq('id', settings.current_round_id).single();
+          if (raceInfo) setActiveRace(raceInfo);
+        }
       }
       
       setIsLoading(false);
@@ -153,8 +171,27 @@ export default function Dashboard() {
     const { data: settings } = await supabase.from('app_settings').select('current_round_id').single();
     const roundId = settings?.current_round_id || 1;
 
+    // Validate min_bet
+    const { data: raceInfo } = await supabase.from('races').select('*').eq('id', roundId).single();
+    const minBet = racer.type === 'TEAM' || racer.type === 'MONTHLY_TEAM' ? (raceInfo?.team_min_bet || 0) : (raceInfo?.racer_min_bet || 0);
+
+    if (amount < minBet) {
+      showError('Invalid Bet', `Bet amount must be at least $${minBet} for this participant.`);
+      return;
+    }
+
     const { error: bidError } = await supabase.from('bids').insert([
-      { racer_id: biddingId, user_id: userId, amount, bidder_name: loginId, status: isViewer ? 'PENDING' : 'APPROVED', round_id: roundId }
+      { 
+        racer_id: biddingId, 
+        user_id: userId, 
+        amount, 
+        bidder_name: loginId, 
+        status: isViewer ? 'PENDING' : 'APPROVED', 
+        round_id: roundId,
+        bettor_name: bettorName,
+        cid: cid,
+        image_link: imageLink
+      }
     ]);
 
     if (!bidError) {
@@ -184,29 +221,26 @@ export default function Dashboard() {
     
     setBiddingId(null);
     setBidAmount('');
+    setBettorName('');
+    setCid('');
+    setImageLink('');
   };
 
   const handleLogout = async () => {
+    sessionStorage.removeItem('securityVerified');
     await supabase.auth.signOut();
     router.replace('/login');
   };
 
-  const handleSetupSubmit = async (e: React.FormEvent) => {
+  const handleSecuritySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!setupCharName.trim() || !setupCID.trim()) {
-      showError('Missing Information', 'Both Character Name and CID are required.');
-      return;
-    }
-    
-    const { error } = await supabase.from('profiles').update({
-      login_id: `${setupCharName.trim()} | ${setupCID.trim()}`
-    }).eq('id', userId);
-    
-    if (error) {
-      showError('Setup Failed', error.message);
+    const isValid = await verifySecurityCode(securityCodeInput);
+    if (isValid) {
+      sessionStorage.setItem('securityVerified', 'true');
+      setIsSecurityVerified(true);
     } else {
-      setShowSetup(false);
-      router.push('/');
+      showError('Access Denied', 'Invalid security code.');
+      setSecurityCodeInput('');
     }
   };
 
@@ -336,19 +370,30 @@ export default function Dashboard() {
         )}
 
         <div style={{ marginTop: 'auto', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <button 
-            className={(racer.type === 'TEAM' ? isTeamBettingOpen : isIndBettingOpen) || role !== 'viewer' ? "btn-primary" : "btn-secondary"} 
-            style={{ flex: 1, display: 'flex', justifyContent: 'space-between', opacity: (racer.type === 'TEAM' ? isTeamBettingOpen : isIndBettingOpen) || role !== 'viewer' ? 1 : 0.5 }} 
-            disabled={!(racer.type === 'TEAM' ? isTeamBettingOpen : isIndBettingOpen) && role === 'viewer'}
-            onClick={e => { 
-              e.stopPropagation(); 
-              setBiddingId(racer.id); 
-              setBidAmount('');
-            }}
-          >
-            <span>{(racer.type === 'TEAM' ? isTeamBettingOpen : isIndBettingOpen) || role !== 'viewer' ? 'PLACE BET' : 'BETS CLOSED'}</span>
-            <span className="text-mono">&gt;</span>
-          </button>
+          {(() => {
+            const isWindowOpen = racer.type === 'TEAM' 
+              ? isTeamBettingOpen 
+              : (racer.type === 'MONTHLY_TEAM' || racer.type === 'MONTHLY_RACER' ? isMonthlyBettingOpen : isIndBettingOpen);
+            
+            // Can always bet if window is open. If closed, ONLY admin can bet.
+            const canBet = isWindowOpen || role === 'admin';
+            
+            return (
+              <button 
+                className={canBet ? "btn-primary" : "btn-secondary"} 
+                style={{ flex: 1, display: 'flex', justifyContent: 'space-between', opacity: canBet ? 1 : 0.5 }} 
+                disabled={!canBet}
+                onClick={e => { 
+                  e.stopPropagation(); 
+                  setBiddingId(racer.id); 
+                  setBidAmount('');
+                }}
+              >
+                <span>{canBet ? 'PLACE BET' : 'BETS CLOSED'}</span>
+                <span className="text-mono">&gt;</span>
+              </button>
+            );
+          })()}
           
           {(role === 'management' || role === 'admin') && (
             <button className="btn-secondary" style={{ flex: '0 0 auto', padding: '0.85rem 1rem' }} onClick={e => { e.stopPropagation(); router.push(`/racer/${racer.id}`); }}>
@@ -398,8 +443,13 @@ export default function Dashboard() {
               </Link>
             </>
           )}
-          <div className="text-mono" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-            <span style={{ fontSize: '0.85rem', color: '#fff', fontWeight: 'bold' }}>{loginId.toUpperCase()}</span>
+          <div 
+            className="text-mono hover-glow" 
+            style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', cursor: 'pointer', padding: '0.25rem 0.5rem', borderRadius: '4px' }}
+            onClick={() => router.push('/profile')}
+            title="Go to Profile"
+          >
+            <span style={{ fontSize: '0.85rem', color: '#fff', fontWeight: 'bold' }}>{(displayName || loginId).toUpperCase()}</span>
             <span style={{ fontSize: '0.65rem', color: role === 'admin' ? '#ff2a2a' : role === 'management' ? 'var(--accent-secondary)' : 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>
               OP: {role || 'UNKNOWN'}
             </span>
@@ -484,9 +534,20 @@ export default function Dashboard() {
       {biddingId && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.9)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div className="glass-panel animate-in" style={{ padding: '3rem', width: '90%', maxWidth: '500px', border: '1px solid var(--accent-primary)' }}>
-            <h2 className="title-gradient" style={{ fontSize: '2rem', marginBottom: '2rem', textTransform: 'uppercase' }}>LOG WINNING BET</h2>
+            <h2 className="title-gradient" style={{ fontSize: '2rem', marginBottom: '1rem', textTransform: 'uppercase', textAlign: 'center' }}>PLACE BET</h2>
             
-            <form onSubmit={handleBid} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginBottom: '2rem' }}>
+            {(() => {
+              const r = data.find(r => r.id === biddingId);
+              const minBet = r?.type === 'TEAM' || r?.type === 'MONTHLY_TEAM' ? (activeRace?.team_min_bet || 0) : (activeRace?.racer_min_bet || 0);
+              const isBetValid = Number(bidAmount) >= minBet;
+              
+              return (
+                <>
+                  <p className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', marginBottom: '2rem' }}>
+                    Minimum bet required: ${minBet}
+                  </p>
+                  
+                  <form onSubmit={handleBid} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginBottom: '2rem' }}>
               <div>
                 <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem' }}>BET AMOUNT ($)</label>
                 <input 
@@ -494,54 +555,92 @@ export default function Dashboard() {
                   className="input-base" 
                   value={bidAmount}
                   onChange={(e) => setBidAmount(e.target.value)}
-                  placeholder="Enter winning bet..."
+                  placeholder="Enter bet amount..."
                   style={{ width: '100%' }}
                   required
                   autoFocus
                 />
               </div>
 
+              <div>
+                <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem' }}>BETTOR NAME</label>
+                <input 
+                  type="text" 
+                  className="input-base" 
+                  value={bettorName}
+                  onChange={(e) => setBettorName(e.target.value)}
+                  placeholder="Enter bettor's name..."
+                  style={{ width: '100%' }}
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem' }}>CID</label>
+                <input 
+                  type="text" 
+                  className="input-base" 
+                  value={cid}
+                  onChange={(e) => setCid(e.target.value)}
+                  placeholder="Enter CID..."
+                  style={{ width: '100%' }}
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem' }}>IMAGE LINK (RECEIPT)</label>
+                <input 
+                  type="url" 
+                  className="input-base" 
+                  value={imageLink}
+                  onChange={(e) => setImageLink(e.target.value)}
+                  placeholder="https://..."
+                  style={{ width: '100%' }}
+                />
+              </div>
+
               <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
                 <button type="button" className="btn-secondary" onClick={() => setBiddingId(null)}>CANCEL</button>
-                <button type="submit" className="btn-primary">CONFIRM BET</button>
+                <button 
+                  type="submit" 
+                  className={isBetValid ? "btn-primary" : "btn-secondary"} 
+                  disabled={!isBetValid}
+                  style={{ opacity: isBetValid ? 1 : 0.5 }}
+                >
+                  CONFIRM BET
+                </button>
               </div>
             </form>
+            </>
+          );
+        })()}
           </div>
         </div>
       )}
-      {showSetup && (
+      {!isSecurityVerified && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.95)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
-          <div className="glass-panel animate-in" style={{ padding: '3rem', maxWidth: '500px', width: '90%', border: '1px solid var(--accent-primary)' }}>
-            <h2 className="title-gradient" style={{ fontSize: '2rem', marginBottom: '0.5rem', textTransform: 'uppercase' }}>IDENTITY SETUP REQUIRED</h2>
+          <div className="glass-panel animate-in" style={{ padding: '3rem', maxWidth: '400px', width: '90%', border: '1px solid var(--accent-primary)', textAlign: 'center' }}>
+            <h2 className="title-gradient" style={{ fontSize: '2rem', marginBottom: '0.5rem', textTransform: 'uppercase' }}>SECURITY CHECK</h2>
             <p className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '2rem', lineHeight: 1.5 }}>
-              YOUR ACCOUNT WAS CREATED VIA GOOGLE. PLEASE PROVIDE YOUR IN-CITY CHARACTER NAME AND CITIZEN ID TO COMPLETE REGISTRATION.
+              AUTHENTICATOR VERIFICATION REQUIRED. PLEASE ENTER YOUR SECURITY CODE TO PROCEED.
             </p>
-            <form onSubmit={handleSetupSubmit}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1.5rem' }}>
-                <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 'bold' }}>&gt; CHARACTER NAME</label>
+            <form onSubmit={handleSecuritySubmit}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '2.5rem', textAlign: 'left' }}>
+                <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 'bold' }}>&gt; AUTHENTICATOR CODE</label>
                 <input 
-                  type="text" 
+                  type="password" 
                   className="input-base"
-                  value={setupCharName}
-                  onChange={(e) => setSetupCharName(e.target.value)}
-                  placeholder="First Last"
+                  value={securityCodeInput}
+                  onChange={(e) => setSecurityCodeInput(e.target.value)}
+                  placeholder="••••"
+                  style={{ textAlign: 'center', letterSpacing: '8px', fontSize: '1.5rem', padding: '1rem' }}
                   required
+                  autoFocus
                 />
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '2.5rem' }}>
-                <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 'bold' }}>&gt; CITIZEN ID (CID)</label>
-                <input 
-                  type="text" 
-                  className="input-base"
-                  value={setupCID}
-                  onChange={(e) => setSetupCID(e.target.value)}
-                  placeholder="e.g. 12345"
-                  required
-                />
-              </div>
-              <button type="submit" className="btn-primary" style={{ width: '100%', padding: '1rem', display: 'flex', justifyContent: 'space-between' }}>
-                <span>COMPLETE SETUP</span>
-                <span className="text-mono">&gt;&gt;</span>
+              <button type="submit" className="btn-primary" style={{ width: '100%', padding: '1rem', display: 'flex', justifyContent: 'center' }}>
+                <span>VERIFY ACCESS</span>
               </button>
             </form>
           </div>

@@ -26,7 +26,10 @@ CREATE OR REPLACE FUNCTION public.protect_role_update()
 RETURNS TRIGGER AS $$
 BEGIN
   -- If a normal user tries to change their role, ignore the change
-  IF OLD.role IS DISTINCT FROM NEW.role AND NOT EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin') THEN
+  -- Allow if auth.uid() is NULL (meaning it's being run from the Supabase SQL Editor or a service role)
+  IF OLD.role IS DISTINCT FROM NEW.role 
+     AND auth.uid() IS NOT NULL 
+     AND NOT EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin') THEN
     NEW.role = OLD.role;
   END IF;
   RETURN NEW;

@@ -32,6 +32,9 @@ type Bid = {
   amount: number;
   created_at: string;
   bidder_name: string;
+  result?: string;
+  payout?: number;
+  round_id?: number;
   profiles: {
     login_id: string;
   };
@@ -65,6 +68,10 @@ export default function RacerProfile() {
   const [isBidding, setIsBidding] = useState(false);
   const [bidAmount, setBidAmount] = useState<string>('');
   const [loginId, setLoginId] = useState<string>('');
+  const [displayName, setDisplayName] = useState<string>('');
+  const [bettorName, setBettorName] = useState<string>('');
+  const [cid, setCid] = useState<string>('');
+  const [imageLink, setImageLink] = useState<string>('');
   const [isTeamBettingOpen, setIsTeamBettingOpen] = useState(false);
   const [isIndBettingOpen, setIsIndBettingOpen] = useState(false);
   const [isMonthlyBettingOpen, setIsMonthlyBettingOpen] = useState(false);
@@ -95,12 +102,13 @@ export default function RacerProfile() {
         setUserId(session.user.id);
         const { data: profile } = await supabase
           .from('profiles')
-          .select('role, login_id')
+          .select('role, login_id, display_name')
           .eq('id', session.user.id)
           .single();
         if (profile) {
           setRole(profile.role);
           setLoginId(profile.login_id);
+          setDisplayName(profile.display_name || '');
         }
       }
 
@@ -164,6 +172,9 @@ export default function RacerProfile() {
           created_at,
           racer_id,
           bidder_name,
+          result,
+          payout,
+          round_id,
           profiles ( login_id )
         `)
         .in('racer_id', targetIds)
@@ -249,8 +260,34 @@ export default function RacerProfile() {
     }
 
     const isViewer = role === 'viewer';
+    
+    // Fetch current round_id
+    const { data: settings } = await supabase.from('app_settings').select('current_round_id').single();
+    const roundId = settings?.current_round_id || 1;
+
+    // Validate min_bet
+    const { data: raceInfo } = await supabase.from('races').select('*').eq('id', roundId).single();
+    const minBet = racer.type === 'TEAM' || racer.type === 'MONTHLY_TEAM' ? (raceInfo?.team_min_bet || 0) : (raceInfo?.racer_min_bet || 0);
+
+    if (amount < minBet) {
+      showError('Invalid Bet', `Bet amount must be at least $${minBet} for this participant.`);
+      return;
+    }
+
+    const finalBettorName = (role === 'admin' || role === 'management') ? (bettorName || loginId) : loginId;
+    const finalCid = (role === 'admin' || role === 'management') ? cid : null;
+
     const { error: bidError } = await supabase.from('bids').insert([
-      { racer_id: id, user_id: userId, amount, bidder_name: loginId, status: isViewer ? 'PENDING' : 'APPROVED' }
+      { 
+        racer_id: id, 
+        user_id: userId, 
+        amount, 
+        bidder_name: loginId, 
+        bettor_name: finalBettorName,
+        cid: finalCid,
+        status: isViewer ? 'PENDING' : 'APPROVED',
+        round_id: roundId
+      }
     ]);
 
     if (!bidError) {
@@ -378,8 +415,13 @@ export default function RacerProfile() {
               PENDING BETS
             </Link>
           )}
-          <div className="text-mono" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-            <span style={{ fontSize: '0.85rem', color: '#fff', fontWeight: 'bold' }}>{loginId.toUpperCase()}</span>
+          <div 
+            className="text-mono hover-glow" 
+            style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', cursor: 'pointer', padding: '0.25rem 0.5rem', borderRadius: '4px' }}
+            onClick={() => router.push('/profile')}
+            title="Go to Profile"
+          >
+            <span style={{ fontSize: '0.85rem', color: '#fff', fontWeight: 'bold' }}>{(displayName || loginId).toUpperCase()}</span>
             <span style={{ fontSize: '0.65rem', color: role === 'admin' ? '#ff2a2a' : role === 'management' ? 'var(--accent-secondary)' : 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>
               OP: {role || 'UNKNOWN'}
             </span>
@@ -448,19 +490,20 @@ export default function RacerProfile() {
               <p className="bid-amount" style={{ fontSize: '4rem' }}>{racer.current_bid.toLocaleString()}</p>
             </div>
             {(() => {
-              const isBettingOpen = racer.type === 'TEAM' ? isTeamBettingOpen : racer.type?.startsWith('MONTHLY') ? isMonthlyBettingOpen : isIndBettingOpen;
+              const isWindowOpen = racer.type === 'TEAM' ? isTeamBettingOpen : racer.type?.startsWith('MONTHLY') ? isMonthlyBettingOpen : isIndBettingOpen;
+              const canBet = isWindowOpen || role === 'admin';
               
               return (
                 <button 
-                  className={isBettingOpen || role !== 'viewer' ? "btn-primary" : "btn-secondary"}
-                  style={{ marginTop: '1rem', width: '100%', display: 'flex', justifyContent: 'space-between', padding: '1rem', opacity: isBettingOpen || role !== 'viewer' ? 1 : 0.5 }}
-                  disabled={!isBettingOpen && role === 'viewer'}
+                  className={canBet ? "btn-primary" : "btn-secondary"}
+                  style={{ marginTop: '1rem', width: '100%', display: 'flex', justifyContent: 'space-between', padding: '1rem', opacity: canBet ? 1 : 0.5 }}
+                  disabled={!canBet}
                   onClick={() => {
                     setBidAmount('');
                     setIsBidding(true);
                   }}
                 >
-                  <span>{isBettingOpen || role !== 'viewer' ? 'PLACE BET' : 'BETS CLOSED'}</span>
+                  <span>{canBet ? 'PLACE BET' : 'BETS CLOSED'}</span>
                   <span className="text-mono">&gt;</span>
                 </button>
               );
@@ -690,7 +733,7 @@ export default function RacerProfile() {
         <div className="glass-panel animate-in stagger-2" style={{ padding: '2rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
             <h2 className="title-gradient" style={{ fontSize: '1.5rem', textTransform: 'uppercase', margin: 0 }}>BETTING HISTORY</h2>
-            {(role === 'admin' || role === 'management') && bids.length > 0 && (
+            {role === 'admin' && bids.length > 0 && (
               <button 
                 onClick={handleClearAllBets}
                 className="text-mono"
@@ -711,7 +754,9 @@ export default function RacerProfile() {
                 <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', textAlign: 'left' }}>
                   <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)' }}>TIMESTAMP</th>
                   <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)' }}>BETTOR NAME | CID</th>
+                  <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)' }}>RACE</th>
                   <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)', textAlign: 'right' }}>AMOUNT</th>
+                  <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)', textAlign: 'right' }}>PROFIT / LOSS</th>
                   {(role === 'admin' || role === 'management') && (
                     <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)', textAlign: 'right' }}>ACTION</th>
                   )}
@@ -726,9 +771,26 @@ export default function RacerProfile() {
                     <td className="text-mono" style={{ padding: '1rem', color: '#fff', fontWeight: 'bold' }}>
                       {bid.bidder_name || bid.profiles?.login_id || 'Unknown'}
                     </td>
+                    <td className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)' }}>
+                      {bid.round_id ? `RACE ${bid.round_id}` : '—'}
+                    </td>
                     <td className="text-mono" style={{ padding: '1rem', fontSize: '1.25rem', color: 'var(--accent-secondary)', textAlign: 'right', fontWeight: 900 }}>
                       ${bid.amount.toLocaleString()}
                     </td>
+                    {(() => {
+                      const profit = bid.result === 'WON' ? (bid.payout || 0) - bid.amount : bid.result === 'LOST' ? -bid.amount : 0;
+                      return (
+                        <td className="text-mono" style={{ 
+                          padding: '1rem', 
+                          fontSize: '1.25rem', 
+                          color: profit > 0 ? '#00ff88' : profit < 0 ? '#ff4444' : 'var(--text-muted)', 
+                          textAlign: 'right', 
+                          fontWeight: 900 
+                        }}>
+                          {bid.result === 'PENDING' || !bid.result ? '—' : `${profit > 0 ? '+' : ''}$${profit.toLocaleString()}`}
+                        </td>
+                      );
+                    })()}
                     {(role === 'admin' || role === 'management') && (
                       <td style={{ padding: '1rem', textAlign: 'right' }}>
                         <button 
@@ -900,6 +962,46 @@ export default function RacerProfile() {
                   autoFocus
                 />
               </div>
+
+              {(role === 'admin' || role === 'management') && (
+                <>
+                  <div>
+                    <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem' }}>BETTOR NAME</label>
+                    <input 
+                      type="text" 
+                      className="input-base" 
+                      value={bettorName}
+                      onChange={(e) => setBettorName(e.target.value)}
+                      placeholder="Enter bettor's name..."
+                      style={{ width: '100%' }}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem' }}>CID</label>
+                    <input 
+                      type="text" 
+                      className="input-base" 
+                      value={cid}
+                      onChange={(e) => setCid(e.target.value)}
+                      placeholder="Enter CID..."
+                      style={{ width: '100%' }}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem' }}>IMAGE LINK (RECEIPT)</label>
+                    <input 
+                      type="url" 
+                      className="input-base" 
+                      value={imageLink}
+                      onChange={(e) => setImageLink(e.target.value)}
+                      placeholder="https://..."
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                </>
+              )}
 
               <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
                 <button type="button" className="btn-secondary" onClick={() => setIsBidding(false)}>CANCEL</button>

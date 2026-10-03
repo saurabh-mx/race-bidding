@@ -18,6 +18,7 @@ export default function PendingBets() {
   const router = useRouter();
   const [role, setRole] = useState<string | null>(null);
   const [loginId, setLoginId] = useState<string>('');
+  const [displayName, setDisplayName] = useState<string>('');
   const [pendingBids, setPendingBids] = useState<Bid[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -31,13 +32,14 @@ export default function PendingBets() {
       
       const { data: profile } = await supabase
         .from('profiles')
-        .select('role, login_id')
+        .select('role, login_id, display_name')
         .eq('id', session.user.id)
         .single();
         
       if (profile) {
         setRole(profile.role);
         setLoginId(profile.login_id);
+        setDisplayName(profile.display_name || '');
       }
 
       if (profile?.role !== 'admin' && profile?.role !== 'management') {
@@ -129,8 +131,13 @@ export default function PendingBets() {
           <Link href="#" className="text-mono" style={{ color: 'var(--text-muted)', textDecoration: 'none', fontSize: '0.85rem', letterSpacing: '1px' }}>RULES</Link>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
-          <div className="text-mono" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-            <span style={{ fontSize: '0.85rem', color: '#fff', fontWeight: 'bold' }}>{loginId.toUpperCase()}</span>
+          <div 
+            className="text-mono hover-glow" 
+            style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', cursor: 'pointer', padding: '0.25rem 0.5rem', borderRadius: '4px' }}
+            onClick={() => router.push('/profile')}
+            title="Go to Profile"
+          >
+            <span style={{ fontSize: '0.85rem', color: '#fff', fontWeight: 'bold' }}>{(displayName || loginId).toUpperCase()}</span>
             <span style={{ fontSize: '0.65rem', color: role === 'admin' ? '#ff2a2a' : role === 'management' ? 'var(--accent-secondary)' : 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>
               OP: {role || 'UNKNOWN'}
             </span>

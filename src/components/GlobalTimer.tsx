@@ -1,8 +1,10 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useModal } from '@/components/ModalProvider';
 
 export function GlobalTimer() {
+  const { showConfirm, showError } = useModal();
   const [teamEnd, setTeamEnd] = useState<Date | null>(null);
   const [indEnd, setIndEnd] = useState<Date | null>(null);
   const [monthlyEnd, setMonthlyEnd] = useState<Date | null>(null);
@@ -21,6 +23,12 @@ export function GlobalTimer() {
   const [allRacers, setAllRacers] = useState<any[]>([]);
   const [postListTab, setPostListTab] = useState<'TEAM' | 'RACER' | 'MONTHLY'>('TEAM');
   const [monthlySubTab, setMonthlySubTab] = useState<'TEAM' | 'RACER'>('TEAM');
+  const [showHostPanel, setShowHostPanel] = useState(false);
+  const [showCreateRacePanel, setShowCreateRacePanel] = useState(false);
+  const [raceMode, setRaceMode] = useState<'CREATE'|'START_BIDDING'>('CREATE');
+  const [pendingRaces, setPendingRaces] = useState<any[]>([]);
+  const [selectedPendingRace, setSelectedPendingRace] = useState<string>('');
+  const [raceForm, setRaceForm] = useState<{name: string, track: string, teamTimer: string, racerTimer: string, teamMinBet: string, racerMinBet: string, teams: any[], racers: any[]}>({ name: '', track: '', teamTimer: '', racerTimer: '', teamMinBet: '', racerMinBet: '', teams: [], racers: [] });
 
   useEffect(() => {
     const checkUser = async () => {
@@ -56,6 +64,12 @@ export function GlobalTimer() {
   }, []);
 
   useEffect(() => {
+    const handleOpenHost = () => setShowHostPanel(true);
+    window.addEventListener('open-host-panel', handleOpenHost);
+    return () => window.removeEventListener('open-host-panel', handleOpenHost);
+  }, []);
+
+  useEffect(() => {
     const interval = setInterval(() => {
       const now = new Date().getTime();
       
@@ -88,13 +102,17 @@ export function GlobalTimer() {
       : (indEnd ? indEnd.getTime() : new Date().getTime());
       
     const newEnd = new Date(Math.max(new Date().getTime(), currentEnd) + minutes * 60000);
+    const isoString = newEnd.toISOString();
     
     if (type === 'TEAM') {
-      await supabase.from('app_settings').update({ team_timer_end: newEnd.toISOString() }).eq('id', 1);
+      await supabase.from('app_settings').update({ team_timer_end: isoString }).eq('id', 1);
+      setTeamEnd(newEnd);
     } else if (type === 'MONTHLY') {
-      await supabase.from('app_settings').update({ monthly_timer_end: newEnd.toISOString() }).eq('id', 1);
+      await supabase.from('app_settings').update({ monthly_timer_end: isoString }).eq('id', 1);
+      setMonthlyEnd(newEnd);
     } else {
-      await supabase.from('app_settings').update({ individual_timer_end: newEnd.toISOString() }).eq('id', 1);
+      await supabase.from('app_settings').update({ individual_timer_end: isoString }).eq('id', 1);
+      setIndEnd(newEnd);
     }
   };
 
@@ -102,12 +120,18 @@ export function GlobalTimer() {
     if (type === 'TEAM') {
       await supabase.from('app_settings').update({ team_timer_end: null }).eq('id', 1);
       await supabase.from('racers').update({ is_posted: false }).eq('type', 'TEAM');
+      setTeamEnd(null);
+      setTeamTimeLeft(0);
     } else if (type === 'MONTHLY') {
       await supabase.from('app_settings').update({ monthly_timer_end: null }).eq('id', 1);
       await supabase.from('racers').update({ is_posted: false }).in('type', ['MONTHLY_TEAM', 'MONTHLY_RACER']);
+      setMonthlyEnd(null);
+      setMonthlyTimeLeft(0);
     } else {
       await supabase.from('app_settings').update({ individual_timer_end: null }).eq('id', 1);
       await supabase.from('racers').update({ is_posted: false }).not('type', 'in', '("TEAM", "MONTHLY_TEAM", "MONTHLY_RACER")');
+      setIndEnd(null);
+      setIndTimeLeft(0);
     }
   };
   
@@ -249,6 +273,104 @@ export function GlobalTimer() {
     if (data) setAllRacers(data);
   };
 
+  const handleOpenCreateRacePanel = async (mode: 'CREATE' | 'START_BIDDING') => {
+    setRaceMode(mode);
+    setShowCreateRacePanel(true);
+    const { data } = await supabase.from('racers').select('*').order('name');
+    if (data) setAllRacers(data);
+    
+    if (mode === 'START_BIDDING') {
+      const { data: pending } = await supabase.from('races').select('*').eq('status', 'PENDING').order('created_at', { ascending: false });
+      if (pending) {
+        setPendingRaces(pending);
+        if (pending.length > 0) setSelectedPendingRace(pending[0].id.toString());
+      }
+    }
+    
+    setRaceForm({ name: '', track: '', teamTimer: '', racerTimer: '', teamMinBet: '', racerMinBet: '', teams: [], racers: [] });
+  };
+
+  const handleCreateRace = async () => {
+    if (raceMode === 'CREATE' && !raceForm.name) {
+      showError('Missing Name', 'Please provide a race name.');
+      return;
+    }
+    
+    const selectedTeamIds = raceForm.teams.map(t => t.id);
+    const selectedRacerIds = raceForm.racers.map(r => r.id);
+    
+    if (raceMode === 'CREATE') {
+      const { data: newRace, error } = await supabase.from('races').insert([{
+        name: raceForm.name,
+        track: raceForm.track,
+        status: 'PENDING',
+        team_timer: Number(raceForm.teamTimer) || 0,
+        racer_timer: Number(raceForm.racerTimer) || 0,
+        team_min_bet: Number(raceForm.teamMinBet) || 0,
+        racer_min_bet: Number(raceForm.racerMinBet) || 0,
+        teams: selectedTeamIds,
+        racers: selectedRacerIds
+      }]).select().single();
+      
+      if (error) {
+        showError('Error', 'Failed to create race. Did you run the SQL script?');
+        return;
+      }
+      
+      setShowCreateRacePanel(false);
+      showConfirm('Race Created!', `The race "${raceForm.name}" is pending. Use START BIDDING to open it.`, () => {});
+      return;
+    }
+    
+    if (!selectedPendingRace) {
+      showError('No Race', 'Please select a pending race.');
+      return;
+    }
+    
+    const race = pendingRaces.find(r => r.id.toString() === selectedPendingRace);
+    if (!race) return;
+
+    if (race.teams?.length > 0) {
+      await supabase.from('racers').update({ is_posted: true, current_bid: 0 }).in('id', race.teams);
+    }
+    if (race.racers?.length > 0) {
+      await supabase.from('racers').update({ is_posted: true, current_bid: 0 }).in('id', race.racers);
+    }
+
+    let updateSettings: any = {};
+    updateSettings.current_round_id = race.id;
+    
+    const finalTeamTimer = Number(raceForm.teamTimer) || race.team_timer || 0;
+    if (finalTeamTimer > 0) {
+      updateSettings.team_timer_end = new Date(new Date().getTime() + finalTeamTimer * 60000).toISOString();
+    }
+    
+    const finalRacerTimer = Number(raceForm.racerTimer) || race.racer_timer || 0;
+    if (finalRacerTimer > 0) {
+      updateSettings.individual_timer_end = new Date(new Date().getTime() + finalRacerTimer * 60000).toISOString();
+    }
+    
+    if (Object.keys(updateSettings).length > 0) {
+      const { error: settingsError } = await supabase.from('app_settings').update(updateSettings).eq('id', 1);
+      if (settingsError) {
+        showError('Settings Error', 'Failed to update timers: ' + settingsError.message);
+        return;
+      }
+      if (updateSettings.team_timer_end) setTeamEnd(new Date(updateSettings.team_timer_end));
+      if (updateSettings.individual_timer_end) setIndEnd(new Date(updateSettings.individual_timer_end));
+      if (updateSettings.monthly_timer_end) setMonthlyEnd(new Date(updateSettings.monthly_timer_end));
+    }
+    
+    const { error: raceError } = await supabase.from('races').update({ status: 'ACTIVE' }).eq('id', race.id);
+    if (raceError) {
+      showError('Race Error', 'Failed to update race status: ' + raceError.message);
+      return;
+    }
+
+    setShowCreateRacePanel(false);
+    showConfirm('Race Started!', `The bidding windows are now live!`, () => {});
+  };
+
   const togglePostStatus = async (id: string, currentStatus: boolean) => {
     await supabase.from('racers').update({ is_posted: !currentStatus }).eq('id', id);
     setAllRacers(allRacers.map(r => r.id === id ? { ...r, is_posted: !currentStatus } : r));
@@ -302,6 +424,7 @@ export function GlobalTimer() {
               </div>
               <div style={{ display: 'flex', gap: '0.25rem' }}>
                 <input type="number" placeholder="Mins" className="input-base" style={{ width: '50px', padding: '0.25rem', fontSize: '0.65rem' }} value={customTime} onChange={e => setCustomTime(e.target.value)} />
+                <button onClick={() => { if(customTime) { handleSetTimer(-Number(customTime), 'TEAM'); setCustomTime(''); } }} className="btn-secondary" style={{ flex: 1, padding: '0.25rem', fontSize: '0.65rem', border: '1px solid #ff4444', color: '#ff4444' }}>-CUST</button>
                 <button onClick={() => { if(customTime) { handleSetTimer(Number(customTime), 'TEAM'); setCustomTime(''); } }} className="btn-secondary" style={{ flex: 1, padding: '0.25rem', fontSize: '0.65rem' }}>+CUST</button>
               </div>
             </div>
@@ -333,6 +456,7 @@ export function GlobalTimer() {
               </div>
               <div style={{ display: 'flex', gap: '0.25rem' }}>
                 <input type="number" placeholder="Mins" className="input-base" style={{ width: '50px', padding: '0.25rem', fontSize: '0.65rem' }} value={customTime} onChange={e => setCustomTime(e.target.value)} />
+                <button onClick={() => { if(customTime) { handleSetTimer(-Number(customTime), 'INDIVIDUAL'); setCustomTime(''); } }} className="btn-secondary" style={{ flex: 1, padding: '0.25rem', fontSize: '0.65rem', border: '1px solid #ff4444', color: '#ff4444' }}>-CUST</button>
                 <button onClick={() => { if(customTime) { handleSetTimer(Number(customTime), 'INDIVIDUAL'); setCustomTime(''); } }} className="btn-secondary" style={{ flex: 1, padding: '0.25rem', fontSize: '0.65rem' }}>+CUST</button>
               </div>
             </div>
@@ -364,28 +488,22 @@ export function GlobalTimer() {
               </div>
               <div style={{ display: 'flex', gap: '0.25rem' }}>
                 <input type="number" placeholder="Mins" className="input-base" style={{ width: '50px', padding: '0.25rem', fontSize: '0.65rem' }} value={customTime} onChange={e => setCustomTime(e.target.value)} />
+                <button onClick={() => { if(customTime) { handleSetTimer(-Number(customTime), 'MONTHLY'); setCustomTime(''); } }} className="btn-secondary" style={{ flex: 1, padding: '0.25rem', fontSize: '0.65rem', border: '1px solid #ff4444', color: '#ff4444' }}>-CUST</button>
                 <button onClick={() => { if(customTime) { handleSetTimer(Number(customTime), 'MONTHLY'); setCustomTime(''); } }} className="btn-secondary" style={{ flex: 1, padding: '0.25rem', fontSize: '0.65rem' }}>+CUST</button>
               </div>
             </div>
           )}
         </div>
 
-        {/* ANNOUNCE WINNER BUTTON */}
+        {/* HOST RACE BET BUTTON */}
         {(role === 'admin' || role === 'management') && (
           <div style={{ pointerEvents: 'auto', marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
             <button 
               className="btn-primary" 
               style={{ width: '100%', padding: '1rem', fontSize: '0.85rem' }}
-              onClick={handleOpenWinnerPanel}
+              onClick={() => setShowHostPanel(true)}
             >
-              ANNOUNCE WINNER
-            </button>
-            <button 
-              className="btn-secondary" 
-              style={{ width: '100%', padding: '1rem', fontSize: '0.85rem' }}
-              onClick={handleOpenPostList}
-            >
-              POST LIST BET
+              HOST RACE BET
             </button>
           </div>
         )}
@@ -571,6 +689,267 @@ export function GlobalTimer() {
 
             <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
               <button onClick={() => setShowPostList(false)} className="btn-secondary" style={{ flex: 1, padding: '1rem', fontSize: '1rem' }}>CLOSE</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* HOST PANEL MODAL */}
+      {showHostPanel && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+          backdropFilter: 'blur(5px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          pointerEvents: 'auto'
+        }}>
+          <div className="glass-panel animate-in" style={{ 
+            padding: '2rem', 
+            display: 'flex', 
+            flexDirection: 'column', 
+            gap: '1rem',
+            minWidth: '400px',
+            border: '1px solid var(--accent-primary)',
+            boxShadow: '0 10px 40px rgba(242, 24, 24, 0.2)'
+          }}>
+            <h3 className="title-gradient" style={{ fontSize: '2rem', textTransform: 'uppercase', textAlign: 'center' }}>
+              HOST PANEL
+            </h3>
+            <p className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center' }}>
+              Select an action to manage the race betting.
+            </p>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1rem' }}>
+              <button 
+                className="btn-primary" 
+                style={{ width: '100%', padding: '1.25rem', fontSize: '1rem' }}
+                onClick={() => {
+                  setShowHostPanel(false);
+                  handleOpenWinnerPanel();
+                }}
+              >
+                ANNOUNCE WINNER
+              </button>
+
+              <button 
+                className="btn-secondary" 
+                style={{ width: '100%', padding: '1.25rem', fontSize: '1rem' }}
+                onClick={() => {
+                  setShowHostPanel(false);
+                  handleOpenCreateRacePanel('CREATE');
+                }}
+              >
+                CREATE RACE
+              </button>
+
+              <button 
+                className="btn-secondary" 
+                style={{ width: '100%', padding: '1.25rem', fontSize: '1rem' }}
+                onClick={() => {
+                  setShowHostPanel(false);
+                  handleOpenCreateRacePanel('START_BIDDING');
+                }}
+              >
+                START BIDDING
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+              <button onClick={() => setShowHostPanel(false)} className="btn-secondary" style={{ flex: 1, padding: '1rem', fontSize: '1rem' }}>CLOSE</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* CREATE RACE PANEL MODAL */}
+      {showCreateRacePanel && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+          backdropFilter: 'blur(5px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          pointerEvents: 'auto'
+        }}>
+          <div className="glass-panel animate-in" style={{ 
+            padding: '2rem', 
+            display: 'flex', 
+            flexDirection: 'column', 
+            gap: '1rem',
+            minWidth: '500px',
+            border: '1px solid var(--accent-primary)',
+            boxShadow: '0 10px 40px rgba(242, 24, 24, 0.2)'
+          }}>
+            <h3 className="title-gradient" style={{ fontSize: '2rem', textTransform: 'uppercase', textAlign: 'center' }}>
+              {raceMode === 'CREATE' ? 'CREATE RACE' : 'START BIDDING'}
+            </h3>
+            <p className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', marginBottom: '1rem' }}>
+              {raceMode === 'CREATE' ? 'Configure the parameters for the new race event.' : 'Select a pending race to post the participants and start the timers.'}
+            </p>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {raceMode === 'START_BIDDING' && pendingRaces.length > 0 && (
+                <div>
+                  <label className="text-mono" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem', display: 'block' }}>CONFIRM RACE</label>
+                  <select className="input-base" style={{ width: '100%', padding: '0.75rem', background: 'rgba(0,0,0,0.5)', cursor: 'pointer' }} value={selectedPendingRace} onChange={e => setSelectedPendingRace(e.target.value)}>
+                    {pendingRaces.map((pr: any, idx: number) => (
+                      <option key={idx} value={pr.id} style={{ color: '#000' }}>
+                        ROUND {pr.id}: {pr.name.toUpperCase()} {pr.track ? `// ${pr.track.toUpperCase()}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {raceMode === 'CREATE' && (
+                <>
+                  <div>
+                    <label className="text-mono" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem', display: 'block' }}>RACE NAME</label>
+                    <input type="text" className="input-base" style={{ width: '100%', padding: '0.75rem' }} value={raceForm.name} onChange={e => setRaceForm({...raceForm, name: e.target.value})} placeholder="e.g. Grand Prix Finals" />
+                  </div>
+                  <div>
+                    <label className="text-mono" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem', display: 'block' }}>TRACK</label>
+                    <input type="text" className="input-base" style={{ width: '100%', padding: '0.75rem' }} value={raceForm.track} onChange={e => setRaceForm({...raceForm, track: e.target.value})} placeholder="e.g. Neon Circuit" />
+                  </div>
+                </>
+              )}
+              {raceMode === 'CREATE' && (
+                <div style={{ display: 'flex', gap: '1rem' }}>
+                  <div style={{ flex: 1, padding: '1rem', background: 'rgba(242, 24, 24, 0.05)', border: '1px solid var(--accent-primary)', borderRadius: '4px' }}>
+                    <h4 className="text-mono" style={{ color: 'var(--accent-primary)', fontSize: '0.85rem', marginBottom: '1rem', textAlign: 'center' }}>TEAM SETTINGS</h4>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <div style={{ flex: 1 }}>
+                        <label className="text-mono" style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.25rem', display: 'block' }}>TIMER (MINUTES)</label>
+                        <input type="number" className="input-base" style={{ width: '100%', padding: '0.5rem', fontSize: '0.85rem' }} value={raceForm.teamTimer} onChange={e => setRaceForm({...raceForm, teamTimer: e.target.value})} placeholder="e.g. 60" />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <label className="text-mono" style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.25rem', display: 'block' }}>MINIMUM BET ($)</label>
+                        <input type="number" className="input-base" style={{ width: '100%', padding: '0.5rem', fontSize: '0.85rem' }} value={raceForm.teamMinBet} onChange={e => setRaceForm({...raceForm, teamMinBet: e.target.value})} placeholder="e.g. 50" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ flex: 1, padding: '1rem', background: 'rgba(0, 255, 136, 0.05)', border: '1px solid #00ff88', borderRadius: '4px' }}>
+                    <h4 className="text-mono" style={{ color: '#00ff88', fontSize: '0.85rem', marginBottom: '1rem', textAlign: 'center' }}>DRIVER SETTINGS</h4>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <div style={{ flex: 1 }}>
+                        <label className="text-mono" style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.25rem', display: 'block' }}>TIMER (MINUTES)</label>
+                        <input type="number" className="input-base" style={{ width: '100%', padding: '0.5rem', fontSize: '0.85rem' }} value={raceForm.racerTimer} onChange={e => setRaceForm({...raceForm, racerTimer: e.target.value})} placeholder="e.g. 60" />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <label className="text-mono" style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.25rem', display: 'block' }}>MINIMUM BET ($)</label>
+                        <input type="number" className="input-base" style={{ width: '100%', padding: '0.5rem', fontSize: '0.85rem' }} value={raceForm.racerMinBet} onChange={e => setRaceForm({...raceForm, racerMinBet: e.target.value})} placeholder="e.g. 50" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {raceMode === 'CREATE' && (
+                <div style={{ display: 'flex', gap: '1rem' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                      <label className="text-mono" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>SELECT TEAMS</label>
+                      <button 
+                        onClick={() => {
+                          const allTeams = allRacers.filter(r => r.type === 'TEAM');
+                          setRaceForm({...raceForm, teams: allTeams});
+                        }}
+                        className="text-mono" 
+                        style={{ fontSize: '0.65rem', background: 'none', border: '1px solid var(--accent-primary)', color: 'var(--accent-primary)', padding: '0.15rem 0.5rem', borderRadius: '4px', cursor: 'pointer' }}
+                      >
+                        SELECT ALL
+                      </button>
+                    </div>
+                    <div className="input-base" style={{ minHeight: '3rem', padding: '0.5rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                      {raceForm.teams.map(t => (
+                        <span key={t.id} style={{ background: 'rgba(242, 24, 24, 0.2)', border: '1px solid var(--accent-primary)', padding: '0.25rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          {t.name}
+                          <button onClick={() => setRaceForm({...raceForm, teams: raceForm.teams.filter(team => team.id !== t.id)})} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: 0 }}>×</button>
+                        </span>
+                      ))}
+                      <select 
+                        style={{ background: 'transparent', border: 'none', color: '#fff', outline: 'none', flex: 1, minWidth: '120px' }} 
+                        value="" 
+                        onChange={e => {
+                          const teamId = e.target.value;
+                          if (!teamId) return;
+                          const teamObj = allRacers.find(r => r.id === teamId);
+                          if (teamObj && !raceForm.teams.some(t => t.id === teamId)) {
+                            setRaceForm({...raceForm, teams: [...raceForm.teams, teamObj]});
+                          }
+                        }}
+                      >
+                        <option value="" style={{ color: '#000' }}>+ Add Team</option>
+                        {allRacers.filter(r => r.type === 'TEAM' && !raceForm.teams.some(t => t.id === r.id)).map(t => (
+                          <option key={t.id} value={t.id} style={{ color: '#000' }}>{t.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                      <label className="text-mono" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>SELECT RACERS</label>
+                      <button 
+                        onClick={() => {
+                          const filteredRacers = allRacers
+                            .filter(r => r.type !== 'TEAM' && !r.type?.startsWith('MONTHLY'))
+                            .filter(r => {
+                              if (raceForm.teams.length === 0) return true;
+                              return raceForm.teams.some(t => r.team_name === t.name || r.captain_name === t.name || (t.roster && t.roster.includes(r.name)));
+                            });
+                          setRaceForm({...raceForm, racers: filteredRacers});
+                        }}
+                        className="text-mono" 
+                        style={{ fontSize: '0.65rem', background: 'none', border: '1px solid #00ff88', color: '#00ff88', padding: '0.15rem 0.5rem', borderRadius: '4px', cursor: 'pointer' }}
+                      >
+                        SELECT ALL
+                      </button>
+                    </div>
+                    <div className="input-base" style={{ minHeight: '3rem', padding: '0.5rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                      {raceForm.racers.map(r => (
+                        <span key={r.id} style={{ background: 'rgba(0, 255, 136, 0.2)', border: '1px solid #00ff88', padding: '0.25rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          {r.name}
+                          <button onClick={() => setRaceForm({...raceForm, racers: raceForm.racers.filter(racer => racer.id !== r.id)})} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: 0 }}>×</button>
+                        </span>
+                      ))}
+                      <select 
+                        style={{ background: 'transparent', border: 'none', color: '#fff', outline: 'none', flex: 1, minWidth: '120px' }} 
+                        value="" 
+                        onChange={e => {
+                          const racerId = e.target.value;
+                          if (!racerId) return;
+                          const racerObj = allRacers.find(r => r.id === racerId);
+                          if (racerObj && !raceForm.racers.some(r => r.id === racerId)) {
+                            setRaceForm({...raceForm, racers: [...raceForm.racers, racerObj]});
+                          }
+                        }}
+                      >
+                        <option value="" style={{ color: '#000' }}>+ Add Racer</option>
+                        {allRacers
+                          .filter(r => r.type !== 'TEAM' && !r.type?.startsWith('MONTHLY') && !raceForm.racers.some(existing => existing.id === r.id))
+                          .filter(r => {
+                            if (raceForm.teams.length === 0) return true;
+                            return raceForm.teams.some(t => r.team_name === t.name || r.captain_name === t.name || (t.roster && t.roster.includes(r.name)));
+                          })
+                          .map(r => (
+                            <option key={r.id} value={r.id} style={{ color: '#000' }}>{r.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
+              <button onClick={() => setShowCreateRacePanel(false)} className="btn-secondary" style={{ flex: 1, padding: '1rem', fontSize: '1rem' }}>CANCEL</button>
+              <button onClick={handleCreateRace} className="btn-primary" style={{ flex: 1, padding: '1rem', fontSize: '1rem' }}>CONFIRM</button>
             </div>
           </div>
         </div>

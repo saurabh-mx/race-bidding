@@ -21,6 +21,7 @@ export default function UserProfile() {
   const router = useRouter();
   const [role, setRole] = useState<string | null>(null);
   const [loginId, setLoginId] = useState<string>('');
+  const [displayName, setDisplayName] = useState<string>('');
   const [myBids, setMyBids] = useState<Bid[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -34,13 +35,14 @@ export default function UserProfile() {
       
       const { data: profile } = await supabase
         .from('profiles')
-        .select('role, login_id')
+        .select('role, login_id, display_name')
         .eq('id', session.user.id)
         .single();
         
       if (profile) {
         setRole(profile.role);
         setLoginId(profile.login_id);
+        setDisplayName(profile.display_name || '');
       }
 
       await fetchMyBids(session.user.id);
@@ -129,8 +131,13 @@ export default function UserProfile() {
               PENDING BETS
             </Link>
           )}
-          <div className="text-mono" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-            <span style={{ fontSize: '0.85rem', color: '#fff', fontWeight: 'bold' }}>{loginId.toUpperCase()}</span>
+          <div 
+            className="text-mono hover-glow" 
+            style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', cursor: 'pointer', padding: '0.25rem 0.5rem', borderRadius: '4px' }}
+            onClick={() => router.push('/profile')}
+            title="Go to Profile"
+          >
+            <span style={{ fontSize: '0.85rem', color: '#fff', fontWeight: 'bold' }}>{(displayName || loginId).toUpperCase()}</span>
             <span style={{ fontSize: '0.65rem', color: role === 'admin' ? '#ff2a2a' : role === 'management' ? 'var(--accent-secondary)' : 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>
               OP: {role || 'UNKNOWN'}
             </span>
@@ -142,7 +149,7 @@ export default function UserProfile() {
       </header>
 
       <div style={{ flex: 1, padding: '2rem', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
-        <h2 className="title-gradient" style={{ fontSize: '2.5rem', marginBottom: '2rem', textTransform: 'uppercase' }}>{loginId.toUpperCase()} // DOSSIER</h2>
+        <h2 className="title-gradient" style={{ fontSize: '2.5rem', marginBottom: '2rem', textTransform: 'uppercase' }}>{(displayName || loginId).toUpperCase()} // DOSSIER</h2>
         
         {/* STATS ROW */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1rem', marginBottom: '3rem' }}>

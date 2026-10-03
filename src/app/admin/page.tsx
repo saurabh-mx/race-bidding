@@ -105,11 +105,29 @@ export default function AdminPage() {
       const { data: allRacers } = await supabase.from('racers').select('id, name, type').order('name', { ascending: true });
       if (allRacers) setRacers(allRacers);
       
-      const { data: allBids } = await supabase.from('bids').select('id, amount, racer_id, bidder_name, profiles(login_id)');
-      // @ts-expect-error
-      if (allBids) setBids(allBids);
+      const fetchBids = async () => {
+        const { data: activeBids } = await supabase
+          .from('bids')
+          .select('id, amount, racer_id, bidder_name, profiles(login_id)')
+          .eq('status', 'APPROVED')
+          .eq('result', 'PENDING');
+        // @ts-expect-error
+        if (activeBids) setBids(activeBids);
+      };
+      await fetchBids();
 
       setIsLoading(false);
+
+      // Realtime subscription for bids
+      const bidsSub = supabase.channel('admin-bids-calculator')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'bids' }, () => {
+          fetchBids();
+        })
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(bidsSub);
+      };
     };
 
     init();
