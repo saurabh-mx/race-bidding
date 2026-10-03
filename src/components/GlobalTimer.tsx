@@ -40,6 +40,10 @@ export function GlobalTimer() {
     };
     checkUser();
 
+    const { data: authListener } = supabase.auth.onAuthStateChange(() => {
+      checkUser();
+    });
+
     const fetchTimer = async () => {
       const { data } = await supabase.from('app_settings').select('team_timer_end, individual_timer_end, monthly_timer_end').eq('id', 1).single();
       if (data) {
@@ -59,6 +63,7 @@ export function GlobalTimer() {
       .subscribe();
 
     return () => {
+      authListener.subscription.unsubscribe();
       supabase.removeChannel(channel);
     };
   }, []);
