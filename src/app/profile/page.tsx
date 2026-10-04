@@ -157,8 +157,8 @@ export default function UserProfile() {
           const isAgent = role === 'agent' || role === 'admin';
           // House earned = what clients lost (their bet amounts on losing bets)
           const houseEarned = lostBids.reduce((sum, b) => sum + b.amount, 0);
-          // House paid = what clients won (their payouts on winning bets)
-          const housePaid = wonBids.reduce((sum, b) => sum + b.payout, 0);
+          // House paid = only the PROFIT clients made (payout minus their original bet)
+          const housePaid = wonBids.reduce((sum, b) => sum + (b.payout - b.amount), 0);
           // House net = earned - paid
           const houseNet = houseEarned - housePaid;
 
