@@ -266,6 +266,10 @@ export function GlobalTimer() {
     }
 
     // --- UPDATE TOURNAMENT TELEMETRY FOR PARTICIPANTS ---
+    const { data: settings } = await supabase.from('app_settings').select('current_round_id').maybeSingle();
+    const currentRoundId = settings?.current_round_id || 1;
+    const resultsToInsert: any[] = [];
+
     for (const racerId of postedRacerIds) {
       if (finalPositions[racerId]) {
         const exactPosStr = finalPositions[racerId];
@@ -333,8 +337,22 @@ export function GlobalTimer() {
             avg_pos: newAvgPos,
             tournament_points: newPoints
           }).eq('id', racerId);
+
+          resultsToInsert.push({
+            round_id: currentRoundId,
+            racer_id: racerId,
+            position: exactPos,
+            points_earned: earnedPoints,
+            is_dnf: isDnf,
+            is_dsq: isDsq,
+            category: winnerType
+          });
         }
       }
+    }
+
+    if (resultsToInsert.length > 0) {
+      await supabase.from('results').insert(resultsToInsert);
     }
     
     // --- UPDATE LATEST WINNER DISPLAY ---
@@ -363,8 +381,7 @@ export function GlobalTimer() {
       updateData.latest_racer_winner = winnerName;
     }
 
-    const { data: settings } = await supabase.from('app_settings').select('current_round_id').maybeSingle();
-    const newRoundId = (settings?.current_round_id || 1) + 1;
+    const newRoundId = currentRoundId + 1;
     
     updateData.id = 1;
     updateData.current_round_id = newRoundId;
