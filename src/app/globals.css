@@ -182,6 +182,16 @@ h1, h2, h3, h4, h5, h6 {
   animation: fadeIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+@keyframes dropDown {
+  from { opacity: 0; transform: translateY(-30px) scale(0.95); filter: blur(4px); }
+  to { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+}
+
+.animate-drop {
+  animation: dropDown 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  transform-origin: top center;
+}
+
 .stagger-1 { animation-delay: 0.1s; opacity: 0; }
 .stagger-2 { animation-delay: 0.2s; opacity: 0; }
 .stagger-3 { animation-delay: 0.3s; opacity: 0; }
@@ -232,3 +242,78 @@ h1, h2, h3, h4, h5, h6 {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(242, 24, 24, 0.6); 
 }
+
+/* Timer Animations */
+@keyframes neonPulseRed {
+  0%, 100% {
+    text-shadow: 0 0 5px #f21818, 0 0 10px #f21818;
+    box-shadow: inset 4px 0 10px -5px rgba(242, 24, 24, 0.5), 0 0 15px rgba(242, 24, 24, 0.2);
+  }
+  50% {
+    text-shadow: 0 0 2px #f21818, 0 0 5px #f21818;
+    box-shadow: inset 4px 0 5px -5px rgba(242, 24, 24, 0.2), 0 0 5px rgba(242, 24, 24, 0.1);
+  }
+}
+
+@keyframes neonPulseGreen {
+  0%, 100% {
+    text-shadow: 0 0 5px #00ff88, 0 0 10px #00ff88;
+    box-shadow: inset 4px 0 10px -5px rgba(0, 255, 136, 0.5), 0 0 15px rgba(0, 255, 136, 0.2);
+  }
+  50% {
+    text-shadow: 0 0 2px #00ff88, 0 0 5px #00ff88;
+    box-shadow: inset 4px 0 5px -5px rgba(0, 255, 136, 0.2), 0 0 5px rgba(0, 255, 136, 0.1);
+  }
+}
+
+@keyframes neonPulseBlue {
+  0%, 100% {
+    text-shadow: 0 0 5px #0088ff, 0 0 10px #0088ff;
+    box-shadow: inset 4px 0 10px -5px rgba(0, 136, 255, 0.5), 0 0 15px rgba(0, 136, 255, 0.2);
+  }
+  50% {
+    text-shadow: 0 0 2px #0088ff, 0 0 5px #0088ff;
+    box-shadow: inset 4px 0 5px -5px rgba(0, 136, 255, 0.2), 0 0 5px rgba(0, 136, 255, 0.1);
+  }
+}
+
+@keyframes timerSlideIn {
+  from { opacity: 0; transform: translateX(-20px); filter: blur(4px); }
+  to { opacity: 1; transform: translateX(0); filter: blur(0); }
+}
+
+.timer-panel {
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: timerSlideIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.timer-panel:hover {
+  transform: translateX(5px);
+}
+
+.timer-active-red {
+  animation: neonPulseRed 2s infinite !important;
+  border-left: 4px solid #f21818 !important;
+}
+
+.timer-active-green {
+  animation: neonPulseGreen 2s infinite !important;
+  border-left: 4px solid #00ff88 !important;
+}
+
+.timer-active-blue {
+  animation: neonPulseBlue 2s infinite !important;
+  border-left: 4px solid #0088ff !important;
+}
+
+.timer-closed {
+  border-left: 4px solid #222 !important;
+  background: rgba(10, 10, 10, 0.8) !important;
+  box-shadow: none !important;
+  opacity: 0.7;
+}
+
+.timer-closed:hover {
+  opacity: 1;
+}
+

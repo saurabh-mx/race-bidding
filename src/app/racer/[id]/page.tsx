@@ -25,6 +25,10 @@ type Racer = {
   racer_role?: string;
   acquisition?: number;
   betting_window_end?: string | null;
+  tournament_races?: number;
+  tournament_wins?: number;
+  tournament_win_rate?: number;
+  tournament_avg_pos?: number;
 };
 
 type Bid = {
@@ -60,6 +64,11 @@ export default function RacerProfile() {
   const [editWins, setEditWins] = useState<number>(0);
   const [editAvgPos, setEditAvgPos] = useState<number>(0);
   const [editAcquisition, setEditAcquisition] = useState<number>(0);
+  
+  const [editTournamentRaces, setEditTournamentRaces] = useState<number>(0);
+  const [editTournamentWins, setEditTournamentWins] = useState<number>(0);
+  const [editTournamentWinRate, setEditTournamentWinRate] = useState<number>(0);
+  const [editTournamentAvgPos, setEditTournamentAvgPos] = useState<number>(0);
   const [editTeamName, setEditTeamName] = useState('');
   const [editRacerRole, setEditRacerRole] = useState('RACER');
   const [individuals, setIndividuals] = useState<Racer[]>([]);
@@ -72,9 +81,11 @@ export default function RacerProfile() {
   const [bettorName, setBettorName] = useState<string>('');
   const [cid, setCid] = useState<string>('');
   const [imageLink, setImageLink] = useState<string>('');
+  const [positionPrediction, setPositionPrediction] = useState<string>('');
   const [isTeamBettingOpen, setIsTeamBettingOpen] = useState(false);
   const [isIndBettingOpen, setIsIndBettingOpen] = useState(false);
   const [isMonthlyBettingOpen, setIsMonthlyBettingOpen] = useState(false);
+  const [selectedRosterSlot, setSelectedRosterSlot] = useState<number>(0);
 
   useEffect(() => {
     const handleTeamBetStatus = (e: any) => setIsTeamBettingOpen(e.detail);
@@ -159,6 +170,11 @@ export default function RacerProfile() {
         setEditAcquisition(racerData.acquisition || 0);
         setEditTeamName(racerData.team_name || '');
         setEditRacerRole(racerData.racer_role || 'RACER');
+        
+        setEditTournamentRaces(racerData.tournament_races || 0);
+        setEditTournamentWins(racerData.tournament_wins || 0);
+        setEditTournamentWinRate(racerData.tournament_win_rate || 0);
+        setEditTournamentAvgPos(racerData.tournament_avg_pos || 0);
       }
 
       // 2. Fetch Bid History strictly for this entity
@@ -211,7 +227,11 @@ export default function RacerProfile() {
         avg_pos: editAvgPos,
         acquisition: editAcquisition,
         team_name: editType !== 'TEAM' ? editTeamName : null,
-        racer_role: editType !== 'TEAM' ? editRacerRole : null
+        racer_role: editType !== 'TEAM' ? editRacerRole : null,
+        tournament_races: editTournamentRaces,
+        tournament_wins: editTournamentWins,
+        tournament_win_rate: editTournamentWinRate,
+        tournament_avg_pos: editTournamentAvgPos
       })
       .eq('id', id);
 
@@ -235,7 +255,11 @@ export default function RacerProfile() {
         avg_pos: editAvgPos,
         acquisition: editAcquisition,
         team_name: editType !== 'TEAM' ? editTeamName : undefined,
-        racer_role: editType !== 'TEAM' ? editRacerRole : undefined
+        racer_role: editType !== 'TEAM' ? editRacerRole : undefined,
+        tournament_races: editTournamentRaces,
+        tournament_wins: editTournamentWins,
+        tournament_win_rate: editTournamentWinRate,
+        tournament_avg_pos: editTournamentAvgPos
       } : null);
       setIsEditing(false);
       window.location.reload();
@@ -267,7 +291,7 @@ export default function RacerProfile() {
 
     // Validate min_bet
     const { data: raceInfo } = await supabase.from('races').select('*').eq('id', roundId).single();
-    const minBet = racer.type === 'TEAM' || racer.type === 'MONTHLY_TEAM' ? (raceInfo?.team_min_bet || 0) : (raceInfo?.racer_min_bet || 0);
+    const minBet = racer.type === 'TEAM' ? (raceInfo?.team_min_bet || 0) : (raceInfo?.racer_min_bet || 0);
 
     if (amount < minBet) {
       showError('Invalid Bet', `Bet amount must be at least $${minBet} for this participant.`);
@@ -283,10 +307,10 @@ export default function RacerProfile() {
         user_id: userId, 
         amount, 
         bidder_name: loginId, 
-        bettor_name: finalBettorName,
         cid: finalCid,
         status: isViewer ? 'PENDING' : 'APPROVED',
-        round_id: roundId
+        round_id: roundId,
+        position_prediction: positionPrediction
       }
     ]);
 
@@ -317,6 +341,7 @@ export default function RacerProfile() {
     
     setIsBidding(false);
     setBidAmount('');
+    setPositionPrediction('');
   };
 
   const handleDeleteBet = (bidId: string, amount: number) => {
@@ -324,7 +349,7 @@ export default function RacerProfile() {
       'Delete Bet',
       'Are you sure you want to delete this bet? This will reduce the total valuation.',
       async () => {
-        const { error } = await supabase.from('bids').delete().eq('id', bidId);
+        const { error } = await supabase.from('bids').update({ result: 'REFUNDED' }).eq('id', bidId);
         if (!error) {
           if (racer) {
             await supabase.from('racers')
@@ -351,7 +376,7 @@ export default function RacerProfile() {
       'Clear All Bets',
       'Are you sure you want to clear ALL bets for this entity? This will permanently delete the betting history and reset the valuation to $0.',
       async () => {
-        const { error } = await supabase.from('bids').delete().eq('racer_id', id);
+        const { error } = await supabase.from('bids').update({ result: 'REFUNDED' }).eq('racer_id', id).eq('result', 'PENDING');
         if (!error) {
           await supabase.from('racers')
             .update({ current_bid: 0 })
@@ -389,11 +414,120 @@ export default function RacerProfile() {
     );
   }
 
-  const racesDriven = racer.races || 0;
-  const winRate = racer.win_rate || 0;
-  const wins = racer.wins || 0;
-  const avgPos = racer.avg_pos || 0;
+  const isTeam = racer.type === 'TEAM';
+
+  let racesDriven = racer.races || 0;
+  let winRate = racer.win_rate || 0;
+  let wins = racer.wins || 0;
+  let avgPos = racer.avg_pos || 0;
+  
+  let tournamentRaces = racer.tournament_races || 0;
+  let tournamentWinRate = racer.tournament_win_rate || 0;
+  let tournamentWins = racer.tournament_wins || 0;
+  let tournamentAvgPos = racer.tournament_avg_pos || 0;
+
+  if (isTeam) {
+    const teamMembers = individuals.filter(d => 
+      d.team_name === racer.name || 
+      d.name === racer.captain_name || 
+      (racer.roster && racer.roster.includes(d.name))
+    );
+    
+    // De-duplicate team members just in case
+    const uniqueTeamMembers = Array.from(new Map(teamMembers.map(m => [m.id, m])).values());
+    
+    if (uniqueTeamMembers.length > 0) {
+      wins = uniqueTeamMembers.reduce((sum, member) => sum + (member.wins || 0), 0) + (racer.wins || 0);
+      racesDriven = uniqueTeamMembers.reduce((sum, member) => sum + (member.races || 0), 0) + (racer.races || 0);
+      winRate = racesDriven > 0 ? Math.round((wins / racesDriven) * 100) : 0;
+      
+      const membersWithPos = uniqueTeamMembers.filter(m => m.avg_pos > 0);
+      if (membersWithPos.length > 0) {
+        const totalAvgPos = membersWithPos.reduce((sum, member) => sum + member.avg_pos, 0);
+        avgPos = Math.round(totalAvgPos / membersWithPos.length);
+      }
+      
+      tournamentWins = uniqueTeamMembers.reduce((sum, member) => sum + (member.tournament_wins || 0), 0) + (racer.tournament_wins || 0);
+      tournamentRaces = uniqueTeamMembers.reduce((sum, member) => sum + (member.tournament_races || 0), 0) + (racer.tournament_races || 0);
+      tournamentWinRate = tournamentRaces > 0 ? Math.round((tournamentWins / tournamentRaces) * 100) : 0;
+      
+      const tMembersWithPos = uniqueTeamMembers.filter(m => (m.tournament_avg_pos || 0) > 0);
+      if (tMembersWithPos.length > 0) {
+        const tTotalAvgPos = tMembersWithPos.reduce((sum, member) => sum + (member.tournament_avg_pos || 0), 0);
+        tournamentAvgPos = Math.round(tTotalAvgPos / tMembersWithPos.length);
+      }
+    }
+  }
   const totalBids = bids.length;
+  
+  const completedBids = bids.filter(b => b.result === 'WON' || b.result === 'LOST');
+  const totalInvested = completedBids.reduce((sum, b) => sum + b.amount, 0);
+  const totalPayout = completedBids.reduce((sum, b) => sum + (b.payout || 0), 0);
+  const bettorNetProfit = totalPayout - totalInvested;
+
+  // Calculate dynamic roster (fill empty slots with individuals assigned to this team)
+  const dynamicRoster = ['', '', '', '', ''];
+  if (isTeam) {
+    const autoAssignedDrivers = individuals.filter(d => d.team_name === racer.name && d.name !== racer.captain_name);
+    let autoIndex = 0;
+    for (let i = 0; i < 5; i++) {
+      if (racer.roster && racer.roster[i]) {
+        dynamicRoster[i] = racer.roster[i];
+      } else {
+        while (autoIndex < autoAssignedDrivers.length) {
+          const candidate = autoAssignedDrivers[autoIndex].name;
+          autoIndex++;
+          if (!racer.roster?.includes(candidate)) {
+            dynamicRoster[i] = candidate;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  let activeMemberName = isTeam ? racer.captain_name || 'NO CAPTAIN' : racer.displayTeam || 'FREE AGENT';
+  let activeMemberImage = racer.captain_image_url;
+  let activeMemberCategory = isTeam ? 'FRANCHISE CAPTAIN' : 'CONTRACTED RACER';
+  
+  let activeMemberAcq = racer.acquisition || 0;
+  let activeMemberRaces = racer.races || 0;
+  let activeMemberWinRate = racer.win_rate || 0;
+  let activeMemberWins = racer.wins || 0;
+  let activeMemberAvgPos = racer.avg_pos || 0;
+
+  if (isTeam && selectedRosterSlot === 0 && racer.captain_name) {
+    const captainObj = individuals.find(d => d.name === racer.captain_name);
+    if (captainObj) {
+      activeMemberAcq = captainObj.acquisition || 0;
+      activeMemberRaces = captainObj.races || 0;
+      activeMemberWinRate = captainObj.win_rate || 0;
+      activeMemberWins = captainObj.wins || 0;
+      activeMemberAvgPos = captainObj.avg_pos || 0;
+    }
+  } else if (isTeam && selectedRosterSlot > 0) {
+    const driverName = dynamicRoster[selectedRosterSlot - 1];
+    if (driverName) {
+      const driverObj = individuals.find(d => d.name === driverName);
+      activeMemberName = driverName;
+      activeMemberImage = driverObj?.logo_url || '';
+      activeMemberCategory = 'CONTRACTED RACER';
+      activeMemberAcq = driverObj?.acquisition || 0;
+      activeMemberRaces = driverObj?.races || 0;
+      activeMemberWinRate = driverObj?.win_rate || 0;
+      activeMemberWins = driverObj?.wins || 0;
+      activeMemberAvgPos = driverObj?.avg_pos || 0;
+    } else {
+      activeMemberName = 'EMPTY SLOT';
+      activeMemberImage = '';
+      activeMemberCategory = 'UNASSIGNED';
+      activeMemberAcq = 0;
+      activeMemberRaces = 0;
+      activeMemberWinRate = 0;
+      activeMemberWins = 0;
+      activeMemberAvgPos = 0;
+    }
+  }
 
   return (
     <main style={{ paddingBottom: '4rem' }}>
@@ -406,7 +540,7 @@ export default function RacerProfile() {
         </Link>
         <div style={{ display: 'flex', gap: '2rem', flex: 1, justifyContent: 'center' }}>
           <Link href="/teams" className="text-mono" style={{ color: '#fff', textDecoration: 'none', fontSize: '0.85rem', letterSpacing: '1px' }}>TEAMS</Link>
-          <Link href="/drivers" className="text-mono" style={{ color: '#fff', textDecoration: 'none', fontSize: '0.85rem', letterSpacing: '1px' }}>DRIVERS</Link>
+          <Link href="/drivers" className="text-mono" style={{ color: '#fff', textDecoration: 'none', fontSize: '0.85rem', letterSpacing: '1px' }}>RACERS</Link>
           <Link href="#" className="text-mono" style={{ color: 'var(--text-muted)', textDecoration: 'none', fontSize: '0.85rem', letterSpacing: '1px' }}>RULES</Link>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
@@ -489,129 +623,220 @@ export default function RacerProfile() {
               <span className="text-mono" style={{ color: 'var(--accent-primary)', fontSize: '2rem' }}>$</span>
               <p className="bid-amount" style={{ fontSize: '4rem' }}>{racer.current_bid.toLocaleString()}</p>
             </div>
-            {(() => {
-              const isWindowOpen = racer.type === 'TEAM' ? isTeamBettingOpen : racer.type?.startsWith('MONTHLY') ? isMonthlyBettingOpen : isIndBettingOpen;
-              const canBet = isWindowOpen || role === 'admin';
-              
-              return (
-                <button 
-                  className={canBet ? "btn-primary" : "btn-secondary"}
-                  style={{ marginTop: '1rem', width: '100%', display: 'flex', justifyContent: 'space-between', padding: '1rem', opacity: canBet ? 1 : 0.5 }}
-                  disabled={!canBet}
-                  onClick={() => {
-                    setBidAmount('');
-                    setIsBidding(true);
-                  }}
-                >
-                  <span>{canBet ? 'PLACE BET' : 'BETS CLOSED'}</span>
-                  <span className="text-mono">&gt;</span>
-                </button>
-              );
-            })()}
           </div>
         </div>
 
         {/* Captain Profile (If exists) & Team Roster */}
         {(racer.captain_name || racer.captain_image_url) && (
-          <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', marginBottom: '3rem' }}>
+          <div style={{ display: 'flex', gap: '2rem', flexDirection: 'column', marginBottom: '3rem' }}>
             
-            {/* Captain Card */}
-            <div className="glass-panel animate-in" style={{ flex: '1.5', minWidth: '450px', padding: '0', display: 'flex', overflow: 'hidden', border: '1px solid var(--accent-primary)', flexDirection: 'row', flexWrap: 'wrap' }}>
-              <div style={{ flex: '1', minWidth: '250px', background: '#0a0a0a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {racer.captain_image_url ? (
-                  <img src={racer.captain_image_url} alt={racer.captain_name} style={{ width: '100%', height: '100%', objectFit: 'cover', minHeight: '400px' }} />
+            {/* Captain Card (Now Landscape) */}
+            <div className="glass-panel animate-in" style={{ width: '100%', minHeight: '400px', padding: '0', display: 'flex', overflow: 'hidden', border: '1px solid var(--accent-primary)', position: 'relative' }}>
+              
+              {/* Full Background Image */}
+              <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 0, background: '#0a0a0a' }}>
+                {activeMemberImage ? (
+                  <img src={activeMemberImage} alt={activeMemberName} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center 20%' }} />
                 ) : (
-                  <div style={{ width: '100%', minHeight: '400px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.1)' }}>NO IMAGE</div>
+                  <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.1)' }}>NO IMAGE</div>
                 )}
+                {/* Smooth Gradient Overlay */}
+                <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', background: 'linear-gradient(to right, rgba(10,10,10,0) 0%, rgba(10,10,10,0) 30%, rgba(10,10,10,0.95) 55%, rgba(10,10,10,1) 70%)' }}></div>
               </div>
-              <div style={{ flex: '1', minWidth: '250px', padding: '2rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                <span className="text-mono" style={{ padding: '0.25rem 0.5rem', border: '1px solid var(--accent-primary)', color: '#fff', fontSize: '0.75rem', display: 'inline-block', marginBottom: '1rem', width: 'fit-content' }}>
-                  {racer.type === 'TEAM' ? 'TEAM FRANCHISE' : (racer.racer_role || 'RACER')} / 01
-                </span>
-                <h2 className="title-gradient" style={{ fontSize: '3rem', fontStyle: 'italic', textTransform: 'uppercase', marginBottom: '2rem' }}>
-                  {racer.type === 'TEAM' ? (racer.captain_name || 'NO CAPTAIN') : (racer.displayTeam || 'FREE AGENT')}
-                </h2>
+
+              {/* Info Container on the right */}
+              <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', zIndex: 1 }}>
+                <div style={{ width: '65%', minWidth: '400px', padding: '3rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', position: 'relative' }}>
+                  <div style={{ position: 'absolute', top: 0, right: 0, width: '150px', height: '150px', background: 'radial-gradient(circle, var(--accent-primary) 0%, transparent 70%)', opacity: 0.05, pointerEvents: 'none' }}></div>
                 
-                <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem', marginBottom: '0.5rem' }}>
-                  <span className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>CATEGORY</span>
-                  <span className="text-mono" style={{ color: '#fff', fontWeight: 'bold' }}>{racer.type === 'TEAM' ? 'FRANCHISE CAPTAIN' : 'CONTRACTED DRIVER'}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '1.5rem', marginBottom: '1.5rem' }}>
-                  <span className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>ACQUISITION</span>
-                  <span className="text-mono" style={{ color: '#fff', fontWeight: 'bold' }}>
-                    ${racer.type === 'TEAM' && racer.captain_name ? ((individuals.find(d => d.name === racer.captain_name)?.acquisition || 0).toLocaleString()) : (racer.acquisition || 0).toLocaleString()}
+                {/* Background Text Watermark */}
+                <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', zIndex: 0 }}>
+                  <span style={{ fontSize: 'clamp(8rem, 15vw, 15rem)', fontWeight: 900, fontStyle: 'italic', color: 'rgba(255,255,255,0.03)', whiteSpace: 'nowrap', userSelect: 'none', lineHeight: 1 }}>
+                    {activeMemberName}
                   </span>
                 </div>
-
-                <span className="text-mono" style={{ color: 'var(--accent-primary)', fontSize: '0.75rem', marginBottom: '1rem', display: 'block' }}>OVERALL TELEMETRY</span>
-                <div style={{ display: 'flex', gap: '2rem' }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem', marginBottom: '0.5rem' }}>
-                      <span className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>RACES</span>
-                      <span className="text-mono" style={{ color: '#fff' }}>{racer.type === 'TEAM' && racer.captain_name ? (individuals.find(d => d.name === racer.captain_name)?.races || 0) : racesDriven}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--accent-primary)', paddingBottom: '0.5rem' }}>
-                      <span className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>WIN RATE</span>
-                      <span className="text-mono" style={{ color: '#fff' }}>{racer.type === 'TEAM' && racer.captain_name ? (individuals.find(d => d.name === racer.captain_name)?.win_rate || 0) : winRate}%</span>
-                    </div>
+                
+                <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column' }}>
+                  <span className="text-mono" style={{ padding: '0.4rem 0.8rem', background: 'rgba(242, 24, 24, 0.1)', border: '1px solid var(--accent-primary)', color: '#fff', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem', width: 'fit-content', borderRadius: '4px' }}>
+                    <span style={{ width: '6px', height: '6px', background: 'var(--accent-primary)', borderRadius: '50%', display: 'inline-block', boxShadow: '0 0 5px var(--accent-primary)' }}></span>
+                    {racer.type === 'TEAM' ? 'TEAM FRANCHISE' : (racer.racer_role || 'RACER')} / {selectedRosterSlot < 9 ? '0' : ''}{selectedRosterSlot + 1}
+                  </span>
+                  
+                  <h2 className="title-gradient" style={{ fontSize: '4rem', fontStyle: 'italic', textTransform: 'uppercase', marginBottom: '1rem', lineHeight: 1 }}>
+                    {activeMemberName}
+                  </h2>
+                
+                <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
+                  <div style={{ padding: '0.5rem 1rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}>
+                    <span className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.65rem', display: 'block', marginBottom: '0.2rem' }}>CATEGORY</span>
+                    <span className="text-mono" style={{ color: '#fff', fontWeight: 'bold', fontSize: '0.85rem' }}>{activeMemberCategory}</span>
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem', marginBottom: '0.5rem' }}>
-                      <span className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>WINS</span>
-                      <span className="text-mono" style={{ color: '#fff' }}>{racer.type === 'TEAM' && racer.captain_name ? (individuals.find(d => d.name === racer.captain_name)?.wins || 0) : wins}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--accent-primary)', paddingBottom: '0.5rem' }}>
-                      <span className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>AVG POS</span>
-                      <span className="text-mono" style={{ color: '#fff' }}>{racer.type === 'TEAM' && racer.captain_name ? (individuals.find(d => d.name === racer.captain_name)?.avg_pos || 0) : avgPos}</span>
-                    </div>
+                  <div style={{ padding: '0.5rem 1rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}>
+                    <span className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.65rem', display: 'block', marginBottom: '0.2rem' }}>ACQUISITION</span>
+                    <span className="text-mono" style={{ color: '#00ff88', fontWeight: 'bold', fontSize: '0.85rem' }}>${activeMemberAcq.toLocaleString()}</span>
                   </div>
                 </div>
 
+                <span className="text-mono" style={{ color: 'var(--accent-primary)', fontSize: '0.75rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span style={{ height: '1px', flex: 1, background: 'linear-gradient(90deg, var(--accent-primary), transparent)' }}></span>
+                  OVERALL TELEMETRY
+                </span>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
+                  {[
+                    { label: 'RACES', value: activeMemberRaces, accent: '#ffb300', icon: '🏁' },
+                    { label: 'WINS', value: activeMemberWins, accent: '#00e5ff', icon: '🏆' },
+                    { label: 'WIN RATE', value: `${activeMemberWinRate}%`, accent: '#f21818', icon: '📈' },
+                    { label: 'AVG POS', value: activeMemberAvgPos, accent: '#b000ff', icon: '🎯' },
+                  ].map((stat, i) => (
+                    <div 
+                      key={stat.label}
+                      style={{ 
+                        background: 'rgba(20,20,20,0.5)',
+                        border: '1px solid rgba(255,255,255,0.05)',
+                        borderRadius: '12px',
+                        padding: '1.25rem',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        position: 'relative',
+                        overflow: 'hidden',
+                        transition: 'all 0.3s ease',
+                      }}
+                      className="hover-card"
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = 'translateY(-4px)';
+                        e.currentTarget.style.borderColor = stat.accent;
+                        e.currentTarget.style.background = 'rgba(30,30,30,0.8)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = 'translateY(0)';
+                        e.currentTarget.style.borderColor = 'rgba(255,255,255,0.05)';
+                        e.currentTarget.style.background = 'rgba(20,20,20,0.5)';
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                        <span className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>{stat.label}</span>
+                        <span style={{ fontSize: '1.2rem', opacity: 0.7 }}>{stat.icon}</span>
+                      </div>
+                      <span style={{ 
+                        fontSize: '2rem', 
+                        fontWeight: 900, 
+                        color: '#fff',
+                        lineHeight: 1,
+                        textShadow: `0 0 10px ${stat.accent}40`
+                      }}>
+                        {stat.value}
+                      </span>
+                      <div style={{ position: 'absolute', bottom: 0, left: 0, height: '2px', width: '30%', background: stat.accent }}></div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
+          </div>
+        </div>
 
             {/* Team Roster */}
             <div className="glass-panel animate-in stagger-1" style={{ flex: '1', minWidth: '350px', padding: '2rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '1rem', marginBottom: '1.5rem', alignItems: 'flex-end' }}>
-                <h3 className="title-gradient" style={{ fontSize: '1.5rem', fontStyle: 'italic', textTransform: 'uppercase' }}>TEAM ROSTER</h3>
-                <span className="text-mono" style={{ color: 'var(--text-muted)' }}>01/06 <span style={{ fontSize: '0.65rem' }}>DRIVERS</span></span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '1rem', marginBottom: '1.5rem', alignItems: 'flex-start' }}>
+                <div>
+                  <div className="text-mono" style={{ color: '#0066ff', fontSize: '0.65rem', marginBottom: '0.5rem', letterSpacing: '2px', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    01 <span style={{ color: 'rgba(255,255,255,0.2)' }}>/</span> LINE-UP
+                  </div>
+                  <h3 className="title-gradient" style={{ fontSize: '2rem', fontStyle: 'italic', textTransform: 'uppercase', margin: 0, lineHeight: 1 }}>TEAM ROSTER</h3>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                  <div className="text-mono" style={{ fontSize: '1.8rem', fontWeight: 900, lineHeight: 1 }}>
+                    <span style={{ color: '#fff' }}>0{(racer.captain_name ? 1 : 0) + dynamicRoster.filter(r => r).length}</span>
+                    <span style={{ color: 'rgba(255,255,255,0.2)' }}>/06</span>
+                  </div>
+                  <span className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.65rem', letterSpacing: '2px', marginTop: '0.5rem' }}>DRIVERS</span>
+                </div>
               </div>
               
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '1rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '1rem' }}>
                 {/* Slot 1: Captain */}
                 <div 
-                  style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--accent-primary)', height: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '0.5rem', cursor: racer.captain_name ? 'pointer' : 'default', transition: 'all 0.2s' }}
+                  style={{ position: 'relative', background: selectedRosterSlot === 0 ? 'rgba(242, 24, 24, 0.1)' : 'rgba(25,25,25,0.6)', border: selectedRosterSlot === 0 ? '2px solid var(--accent-primary)' : '1px solid rgba(255,255,255,0.05)', height: '280px', display: 'flex', flexDirection: 'column', cursor: racer.captain_name ? 'pointer' : 'default', transition: 'all 0.2s', overflow: 'hidden', borderRadius: '4px' }}
                   onClick={() => {
                     if (racer.captain_name) {
-                      const cId = individuals.find(d => d.name === racer.captain_name)?.id;
-                      if (cId) router.push(`/racer/${cId}`);
+                      setSelectedRosterSlot(0);
                     }
                   }}
-                  onMouseEnter={(e) => { if (racer.captain_name) e.currentTarget.style.background = 'rgba(242, 24, 24, 0.1)' }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.02)' }}
+                  onMouseEnter={(e) => { if (racer.captain_name && selectedRosterSlot !== 0) e.currentTarget.style.border = '1px solid rgba(255,255,255,0.3)' }}
+                  onMouseLeave={(e) => { if (selectedRosterSlot !== 0) e.currentTarget.style.border = '1px solid rgba(255,255,255,0.05)' }}
                 >
-                  <span className="text-mono" style={{ color: 'var(--accent-primary)', fontSize: '0.75rem' }}>01</span>
-                  <span className="text-mono" style={{ color: '#fff', fontSize: '0.85rem', fontWeight: 'bold', textAlign: 'center', padding: '0 0.25rem' }}>{racer.captain_name || 'CAPTAIN'}</span>
+                  <span className="text-mono" style={{ position: 'absolute', top: '10px', left: '10px', zIndex: 10, color: selectedRosterSlot === 0 ? 'var(--accent-primary)' : '#fff', fontSize: '0.85rem', fontWeight: 'bold', textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}>CAPTAIN</span>
+                  
+                  {/* Image Section */}
+                  <div style={{ height: '70%', width: '100%', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                    {racer.captain_image_url ? (
+                      <img src={racer.captain_image_url} alt={racer.captain_name || ''} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      <span style={{ color: 'rgba(255,255,255,0.1)' }}>NO IMAGE</span>
+                    )}
+                  </div>
+                  
+                  {/* Info Section */}
+                  <div style={{ height: '30%', padding: '0.75rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', background: 'linear-gradient(180deg, rgba(20,20,20,0) 0%, rgba(10,10,10,1) 100%)' }}>
+                    <span style={{ color: '#fff', fontSize: '1.2rem', fontWeight: 900, fontStyle: 'italic', textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{racer.captain_name || 'CAPTAIN'}</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.65rem' }}>
+                        {racer.captain_name ? `${individuals.find(d => d.name === racer.captain_name)?.type || 'FRANCHISE'} TIER` : 'CAPTAIN'}
+                      </span>
+                      <span className="text-mono" style={{ color: '#0066ff', fontSize: '0.8rem', fontWeight: 'bold' }}>
+                        ${racer.captain_name ? (individuals.find(d => d.name === racer.captain_name)?.acquisition || 0).toLocaleString() : '0'}
+                      </span>
+                    </div>
+                  </div>
                 </div>
                 
                 {/* Slots 2-6: Dynamic Roster */}
                 {[2, 3, 4, 5, 6].map((num, idx) => {
-                  const driverName = (racer.roster && racer.roster[idx]) ? racer.roster[idx] : null;
-                  const driverId = driverName ? individuals.find(d => d.name === driverName)?.id : null;
+                  const driverName = dynamicRoster[idx] || null;
+                  const isSelected = selectedRosterSlot === idx + 1;
+                  const driverObj = driverName ? individuals.find(d => d.name === driverName) : null;
+                  const driverImg = driverObj?.logo_url;
                   return (
                     <div 
                       key={num} 
-                      style={{ background: 'rgba(255,255,255,0.02)', border: driverName ? '1px solid rgba(255,255,255,0.3)' : '1px dashed rgba(255,255,255,0.1)', height: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '0.5rem', cursor: driverId ? 'pointer' : 'default', transition: 'all 0.2s' }}
+                      style={{ position: 'relative', background: isSelected ? 'rgba(242, 24, 24, 0.1)' : 'rgba(25,25,25,0.6)', border: isSelected ? '2px solid var(--accent-primary)' : (driverName ? '1px solid rgba(255,255,255,0.05)' : '1px dashed rgba(255,255,255,0.1)'), height: '280px', display: 'flex', flexDirection: 'column', cursor: driverName ? 'pointer' : 'default', transition: 'all 0.2s', overflow: 'hidden', borderRadius: '4px' }}
                       onClick={() => {
-                        if (driverId) router.push(`/racer/${driverId}`);
+                        if (driverName) {
+                          setSelectedRosterSlot(idx + 1);
+                        }
                       }}
-                      onMouseEnter={(e) => { if (driverId) e.currentTarget.style.background = 'rgba(255,255,255,0.1)' }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.02)' }}
+                      onMouseEnter={(e) => { if (driverName && !isSelected) e.currentTarget.style.border = '1px solid rgba(255,255,255,0.3)' }}
+                      onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.border = driverName ? '1px solid rgba(255,255,255,0.05)' : '1px dashed rgba(255,255,255,0.1)' }}
                     >
-                      <span className="text-mono" style={{ color: driverName ? '#fff' : 'rgba(255,255,255,0.2)', fontSize: '0.75rem' }}>0{num}</span>
-                      <span className="text-mono" style={{ color: driverName ? '#fff' : 'rgba(255,255,255,0.1)', fontSize: '0.85rem', fontWeight: driverName ? 'bold' : 'normal', textAlign: 'center', padding: '0 0.25rem' }}>
-                        {driverName || 'EMPTY'}
-                      </span>
+                      <span className="text-mono" style={{ position: 'absolute', top: '10px', left: '10px', zIndex: 10, color: isSelected ? 'var(--accent-primary)' : (driverName ? '#fff' : 'rgba(255,255,255,0.3)'), fontSize: '0.85rem', fontWeight: 'bold', textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}>{driverObj ? `${driverObj.type} TIER` : `0${num}`}</span>
+                      
+                      {/* Image Section */}
+                      <div style={{ height: '70%', width: '100%', background: 'rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                        {driverImg ? (
+                          <img src={driverImg} alt={driverName || ''} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : (
+                          <span style={{ color: 'rgba(255,255,255,0.1)', fontSize: '0.75rem' }}>{driverName ? 'NO IMAGE' : ''}</span>
+                        )}
+                      </div>
+                      
+                      {/* Info Section */}
+                      <div style={{ height: '30%', padding: '0.75rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', background: 'linear-gradient(180deg, rgba(20,20,20,0) 0%, rgba(10,10,10,1) 100%)' }}>
+                        <span style={{ color: driverName ? '#fff' : 'rgba(255,255,255,0.2)', fontSize: '1.2rem', fontWeight: 900, fontStyle: 'italic', textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{driverName || 'EMPTY'}</span>
+                        {driverName && driverObj ? (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.65rem' }}>{driverObj.type} TIER</span>
+                            <span className="text-mono" style={{ color: '#0066ff', fontSize: '0.8rem', fontWeight: 'bold' }}>
+                              ${(driverObj.acquisition || 0).toLocaleString()}
+                            </span>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span className="text-mono" style={{ color: 'rgba(255,255,255,0.1)', fontSize: '0.65rem' }}>-</span>
+                            <span className="text-mono" style={{ color: 'rgba(255,255,255,0.1)', fontSize: '0.75rem', fontWeight: 'bold' }}>-</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
@@ -621,79 +846,214 @@ export default function RacerProfile() {
           </div>
         )}
 
-        {/* Stats Grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.5rem', marginBottom: '4rem' }} className="animate-in stagger-1">
-          {[
-            { label: 'RACES', value: racesDriven, accent: '#ffb300' },
-            { label: 'WINS', value: wins, accent: '#00e5ff' },
-            { label: 'WIN RATE', value: `${winRate}%`, accent: '#f21818' },
-            { label: 'AVG POS', value: avgPos, accent: '#b000ff' },
-            { label: 'TOTAL BETS', value: totalBids, accent: '#00ff88' },
-            ...(racer.type !== 'TEAM' ? [{ label: 'ACQUISITION', value: `$${(racer.acquisition || 0).toLocaleString()}`, accent: '#ffffff' }] : [])
-          ].map((stat) => (
-            <div 
-              key={stat.label}
-              style={{ 
-                background: 'linear-gradient(145deg, rgba(20,20,20,0.8) 0%, rgba(5,5,5,0.9) 100%)',
-                border: '1px solid rgba(255,255,255,0.05)',
-                borderRadius: '16px',
-                padding: '2.5rem 1.5rem',
-                position: 'relative',
-                overflow: 'hidden',
-                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 4px 20px rgba(0,0,0,0.5)'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-10px)';
-                e.currentTarget.style.borderColor = stat.accent;
-                e.currentTarget.style.boxShadow = `0 15px 30px ${stat.accent}20, inset 0 0 20px ${stat.accent}10`;
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.05)';
-                e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.5)';
-              }}
-            >
-              {/* Background watermark number */}
-              <div style={{
-                position: 'absolute',
-                top: '50%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)',
-                fontSize: '8rem',
-                fontWeight: 900,
-                color: 'rgba(255,255,255,0.02)',
-                zIndex: 0,
-                pointerEvents: 'none',
-                fontStyle: 'italic',
-                whiteSpace: 'nowrap'
-              }}>
-                {stat.value}
-              </div>
-              
-              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '3px', background: `linear-gradient(90deg, transparent, ${stat.accent}, transparent)`, opacity: 0.5 }}></div>
-
-              <span className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.8rem', letterSpacing: '3px', marginBottom: '1rem', zIndex: 1 }}>{stat.label}</span>
-              
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px', zIndex: 1 }}>
+        {/* Telemetry & Financials Bento Grid */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '3rem', marginBottom: '4rem' }} className="animate-in stagger-1">
+          
+          {/* Top Row: Performance Metrics */}
+          <div>
+            <h3 className="text-mono" style={{ color: 'var(--accent-primary)', marginBottom: '1rem', letterSpacing: '2px', fontSize: '0.85rem' }}>[ OVERALL TELEMETRY ]</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.5rem' }}>
+              {[
+                { label: 'RACES', value: racesDriven, accent: '#ffb300', icon: '🏁' },
+                { label: 'WINS', value: wins, accent: '#00e5ff', icon: '🏆' },
+                { label: 'WIN RATE', value: `${winRate}%`, accent: '#f21818', icon: '📈' },
+                { label: 'AVG POS', value: avgPos, accent: '#b000ff', icon: '🎯' },
+              ].map((stat, i) => (
+              <div 
+                key={stat.label}
+                style={{ 
+                  background: 'linear-gradient(135deg, rgba(20,20,20,0.9) 0%, rgba(5,5,5,1) 100%)',
+                  border: '1px solid rgba(255,255,255,0.05)',
+                  borderRadius: '16px',
+                  padding: '2rem 1.5rem',
+                  position: 'relative',
+                  overflow: 'hidden',
+                  transition: 'all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+                  animationDelay: `${i * 0.1}s`
+                }}
+                className="hover-card"
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-8px) scale(1.02)';
+                  e.currentTarget.style.borderColor = stat.accent;
+                  e.currentTarget.style.boxShadow = `0 20px 40px ${stat.accent}30, inset 0 0 30px ${stat.accent}10`;
+                  const icon = e.currentTarget.querySelector('.stat-icon') as HTMLElement;
+                  if (icon) icon.style.transform = 'scale(1.2) rotate(5deg)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0) scale(1)';
+                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.05)';
+                  e.currentTarget.style.boxShadow = '0 10px 30px rgba(0,0,0,0.5)';
+                  const icon = e.currentTarget.querySelector('.stat-icon') as HTMLElement;
+                  if (icon) icon.style.transform = 'scale(1) rotate(0deg)';
+                }}
+              >
+                <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: '60%', height: '2px', background: `linear-gradient(90deg, transparent, ${stat.accent}, transparent)`, opacity: 0.8 }}></div>
+                
+                <span className="stat-icon" style={{ fontSize: '2rem', marginBottom: '1rem', transition: 'transform 0.3s ease', opacity: 0.8 }}>{stat.icon}</span>
+                <span className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.8rem', letterSpacing: '3px', marginBottom: '0.5rem', zIndex: 1, textTransform: 'uppercase' }}>{stat.label}</span>
+                
                 <span style={{ 
                   fontSize: '3.5rem', 
                   fontWeight: 900, 
                   lineHeight: 1,
-                  background: `linear-gradient(180deg, #fff 0%, rgba(255,255,255,0.7) 100%)`,
+                  background: `linear-gradient(180deg, #fff 0%, rgba(255,255,255,0.6) 100%)`,
                   WebkitBackgroundClip: 'text',
                   WebkitTextFillColor: 'transparent',
-                  filter: `drop-shadow(0 0 10px ${stat.accent}40)`
+                  filter: `drop-shadow(0 0 15px ${stat.accent}50)`,
+                  zIndex: 1
                 }}>
                   {stat.value}
                 </span>
+                
+                {/* Abstract Data Rings */}
+                <div style={{ position: 'absolute', right: '-20%', bottom: '-20%', width: '150px', height: '150px', borderRadius: '50%', border: `1px solid ${stat.accent}20`, opacity: 0.5, pointerEvents: 'none' }}></div>
+                <div style={{ position: 'absolute', right: '-10%', bottom: '-10%', width: '100px', height: '100px', borderRadius: '50%', border: `1px solid ${stat.accent}40`, opacity: 0.3, pointerEvents: 'none' }}></div>
               </div>
+            ))}
             </div>
-          ))}
+          </div>
+
+          <div>
+            <h3 className="text-mono" style={{ color: '#00ff88', marginBottom: '1rem', letterSpacing: '2px', fontSize: '0.85rem' }}>[ TOURNAMENT TELEMETRY ]</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.5rem' }}>
+              {[
+                { label: 'T. RACES', value: tournamentRaces, accent: '#ffb300', icon: '🏁' },
+                { label: 'T. WINS', value: tournamentWins, accent: '#00e5ff', icon: '🏆' },
+                { label: 'T. WIN RATE', value: `${tournamentWinRate}%`, accent: '#f21818', icon: '📈' },
+                { label: 'T. AVG POS', value: tournamentAvgPos, accent: '#b000ff', icon: '🎯' },
+              ].map((stat, i) => (
+                <div 
+                  key={stat.label}
+                  style={{ 
+                    background: 'linear-gradient(135deg, rgba(20,20,20,0.9) 0%, rgba(5,5,5,1) 100%)',
+                    border: '1px solid rgba(255,255,255,0.05)',
+                    borderRadius: '16px',
+                    padding: '2rem 1.5rem',
+                    position: 'relative',
+                    overflow: 'hidden',
+                    transition: 'all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+                    animationDelay: `${i * 0.1}s`
+                  }}
+                  className="hover-card"
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-8px) scale(1.02)';
+                    e.currentTarget.style.borderColor = stat.accent;
+                    e.currentTarget.style.boxShadow = `0 20px 40px ${stat.accent}30, inset 0 0 30px ${stat.accent}10`;
+                    const icon = e.currentTarget.querySelector('.stat-icon') as HTMLElement;
+                    if (icon) icon.style.transform = 'scale(1.2) rotate(5deg)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0) scale(1)';
+                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.05)';
+                    e.currentTarget.style.boxShadow = '0 10px 30px rgba(0,0,0,0.5)';
+                    const icon = e.currentTarget.querySelector('.stat-icon') as HTMLElement;
+                    if (icon) icon.style.transform = 'scale(1) rotate(0deg)';
+                  }}
+                >
+                  <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: '60%', height: '2px', background: `linear-gradient(90deg, transparent, ${stat.accent}, transparent)`, opacity: 0.8 }}></div>
+                  
+                  <span className="stat-icon" style={{ fontSize: '2rem', marginBottom: '1rem', transition: 'transform 0.3s ease', opacity: 0.8 }}>{stat.icon}</span>
+                  <span className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.8rem', letterSpacing: '3px', marginBottom: '0.5rem', zIndex: 1, textTransform: 'uppercase' }}>{stat.label}</span>
+                  
+                  <span style={{ 
+                    fontSize: '3.5rem', 
+                    fontWeight: 900, 
+                    lineHeight: 1,
+                    background: `linear-gradient(180deg, #fff 0%, rgba(255,255,255,0.6) 100%)`,
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    filter: `drop-shadow(0 0 15px ${stat.accent}50)`,
+                    zIndex: 1
+                  }}>
+                    {stat.value}
+                  </span>
+                  
+                  {/* Abstract Data Rings */}
+                  <div style={{ position: 'absolute', right: '-20%', bottom: '-20%', width: '150px', height: '150px', borderRadius: '50%', border: `1px solid ${stat.accent}20`, opacity: 0.5, pointerEvents: 'none' }}></div>
+                  <div style={{ position: 'absolute', right: '-10%', bottom: '-10%', width: '100px', height: '100px', borderRadius: '50%', border: `1px solid ${stat.accent}40`, opacity: 0.3, pointerEvents: 'none' }}></div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Bottom Row: Financial Metrics (Wider blocks) */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem' }}>
+            {[
+              { label: 'TOTAL BETS', value: totalBids, accent: '#00ff88', icon: '🎫' },
+              { label: 'BETTOR P&L', value: `${bettorNetProfit >= 0 ? '+' : ''}$${bettorNetProfit.toLocaleString()}`, accent: bettorNetProfit >= 0 ? '#00ff88' : '#ff4444', icon: '💰' },
+              ...(racer.type !== 'TEAM' ? [{ label: 'ACQUISITION', value: `$${(racer.acquisition || 0).toLocaleString()}`, accent: '#ffffff', icon: '🤝' }] : [])
+            ].map((stat, i) => (
+              <div 
+                key={stat.label}
+                style={{ 
+                  background: 'linear-gradient(135deg, rgba(25,25,25,0.9) 0%, rgba(10,10,10,1) 100%)',
+                  border: '1px solid rgba(255,255,255,0.05)',
+                  borderRadius: '16px',
+                  padding: '2.5rem',
+                  position: 'relative',
+                  overflow: 'hidden',
+                  transition: 'all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+                  display: 'flex',
+                  flex: '1 1 320px',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+                  animationDelay: `${(i + 4) * 0.1}s`,
+                  containerType: 'inline-size'
+                }}
+                className="hover-card"
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-5px) scale(1.02)';
+                  e.currentTarget.style.borderColor = stat.accent;
+                  e.currentTarget.style.boxShadow = `0 15px 40px ${stat.accent}20, inset 0 0 40px ${stat.accent}05`;
+                  const icon = e.currentTarget.querySelector('.stat-icon-fin') as HTMLElement;
+                  if (icon) icon.style.transform = 'rotate(15deg) scale(1.2)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0) scale(1)';
+                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.05)';
+                  e.currentTarget.style.boxShadow = '0 10px 30px rgba(0,0,0,0.5)';
+                  const icon = e.currentTarget.querySelector('.stat-icon-fin') as HTMLElement;
+                  if (icon) icon.style.transform = 'rotate(0deg) scale(1)';
+                }}
+              >
+                <div style={{ position: 'absolute', left: 0, top: '20%', bottom: '20%', width: '3px', background: `linear-gradient(180deg, transparent, ${stat.accent}, transparent)`, opacity: 0.8 }}></div>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', zIndex: 1, flex: '1 1 auto', marginRight: '1rem' }}>
+                  <span className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.85rem', letterSpacing: '2px', marginBottom: '0.5rem', textTransform: 'uppercase' }}>{stat.label}</span>
+                  <span style={{ 
+                    fontSize: 'clamp(2rem, 5vw, 3rem)',
+                    fontWeight: 900, 
+                    lineHeight: 1.1,
+                    background: `linear-gradient(90deg, #fff 0%, rgba(255,255,255,0.7) 100%)`,
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    filter: `drop-shadow(0 2px 10px ${stat.accent}40)`,
+                    whiteSpace: 'nowrap'
+                  }}>
+                    {stat.value}
+                  </span>
+                </div>
+                
+                <div className="stat-icon-fin" style={{ fontSize: '3rem', opacity: 0.8, filter: `drop-shadow(0 0 15px ${stat.accent}50)`, transition: 'transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)', flexShrink: 0 }}>
+                  {stat.icon}
+                </div>
+                
+                {/* Cyber grid background layer */}
+                <div style={{ position: 'absolute', inset: 0, opacity: 0.03, backgroundImage: 'linear-gradient(rgba(255,255,255,1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,1) 1px, transparent 1px)', backgroundSize: '20px 20px', pointerEvents: 'none' }}></div>
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* Betting Trend Graph */}
@@ -704,8 +1064,9 @@ export default function RacerProfile() {
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={[...bids].reverse().reduce((acc, bid) => {
                   const lastVal = acc.length > 0 ? acc[acc.length - 1].valuation : 0;
+                  const dateStr = new Date(bid.created_at).toLocaleDateString();
                   acc.push({
-                    name: new Date(bid.created_at).toLocaleDateString(),
+                    name: `${bid.round_id ? `${bid.round_id} - ` : ''}${dateStr}`,
                     valuation: lastVal + bid.amount
                   });
                   return acc;
@@ -787,7 +1148,7 @@ export default function RacerProfile() {
                           textAlign: 'right', 
                           fontWeight: 900 
                         }}>
-                          {bid.result === 'PENDING' || !bid.result ? '—' : `${profit > 0 ? '+' : ''}$${profit.toLocaleString()}`}
+                          {bid.result === 'PENDING' || !bid.result ? '—' : bid.result === 'REFUNDED' ? 'REFUNDED' : `${profit > 0 ? '+' : ''}$${profit.toLocaleString()}`}
                         </td>
                       );
                     })()}
@@ -902,6 +1263,28 @@ export default function RacerProfile() {
                       </div>
                     </div>
                   </div>
+
+                  <div style={{ padding: '1.5rem', border: '1px solid rgba(255,255,255,0.1)', marginTop: '1rem' }}>
+                    <h4 className="text-mono" style={{ color: '#00ff88', marginBottom: '1rem' }}>[ TOURNAMENT CONFIG ]</h4>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                      <div>
+                        <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '0.5rem', display: 'block' }}>T. RACES</label>
+                        <input type="number" className="input-base" value={editTournamentRaces} onChange={e => setEditTournamentRaces(Number(e.target.value))} style={{ width: '100%' }} />
+                      </div>
+                      <div>
+                        <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '0.5rem', display: 'block' }}>T. WINS</label>
+                        <input type="number" className="input-base" value={editTournamentWins} onChange={e => setEditTournamentWins(Number(e.target.value))} style={{ width: '100%' }} />
+                      </div>
+                      <div>
+                        <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '0.5rem', display: 'block' }}>T. WIN RATE (%)</label>
+                        <input type="number" step="0.1" className="input-base" value={editTournamentWinRate} onChange={e => setEditTournamentWinRate(Number(e.target.value))} style={{ width: '100%' }} />
+                      </div>
+                      <div>
+                        <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '0.5rem', display: 'block' }}>T. AVG POS</label>
+                        <input type="number" step="0.1" className="input-base" value={editTournamentAvgPos} onChange={e => setEditTournamentAvgPos(Number(e.target.value))} style={{ width: '100%' }} />
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Column 2: Roster (Only if Team) */}
@@ -961,6 +1344,40 @@ export default function RacerProfile() {
                   required
                   autoFocus
                 />
+              </div>
+
+              <div>
+                <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem' }}>POSITION PREDICTION</label>
+                <select 
+                  className="input-base" 
+                  value={positionPrediction}
+                  onChange={(e) => setPositionPrediction(e.target.value)}
+                  style={{ width: '100%', appearance: 'none', background: 'rgba(0,0,0,0.5)', cursor: 'pointer' }}
+                  required
+                >
+                  <option value="" disabled>-- SELECT POSITION --</option>
+                  {(racer?.type === 'TEAM' ? 
+                    ['1-3', '4-6', '7-9', '10-13', '13-15'] : 
+                    ['1-3', '4-6', '7-10', '11-15', '16-20', '21-25', '26-30', '31-35', '36-40', '41-45']
+                  ).map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem' }}>POSITION PREDICTION</label>
+                <select 
+                  className="input-base" 
+                  value={positionPrediction}
+                  onChange={(e) => setPositionPrediction(e.target.value)}
+                  style={{ width: '100%', appearance: 'none', background: 'rgba(0,0,0,0.5)', cursor: 'pointer' }}
+                  required
+                >
+                  <option value="" disabled>-- SELECT POSITION --</option>
+                  {(racer?.type === 'TEAM' ? 
+                    ['1-3', '4-6', '7-9', '10-13', '13-15'] : 
+                    ['1-3', '4-6', '7-10', '11-15', '16-20', '21-25', '26-30', '31-35', '36-40', '41-45']
+                  ).map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                </select>
               </div>
 
               {(role === 'admin' || role === 'agent') && (

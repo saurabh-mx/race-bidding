@@ -15,7 +15,7 @@ export default function LandingPage() {
         </div>
         <div className="nav-links">
           <Link href="/teams">TEAMS</Link>
-          <Link href="/drivers">DRIVERS</Link>
+          <Link href="/drivers">RACERS</Link>
           <Link href="#">RULES</Link>
           <Link href="/login">LIVE BET</Link>
         </div>

@@ -60,7 +60,7 @@ export default function TeamsPage() {
         </Link>
         <div className="nav-links">
           <Link href="/teams" style={{ color: '#fff' }}>TEAMS</Link>
-          <Link href="/drivers">DRIVERS</Link>
+          <Link href="/drivers">RACERS</Link>
           <Link href="#">RULES</Link>
           <Link href="/login">LIVE BET</Link>
         </div>

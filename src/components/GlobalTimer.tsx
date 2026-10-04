@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { useModal } from '@/components/ModalProvider';
 
 export function GlobalTimer() {
-  const { showConfirm, showError } = useModal();
+  const { showConfirm, showError, showSuccess } = useModal();
   const [teamEnd, setTeamEnd] = useState<Date | null>(null);
   const [indEnd, setIndEnd] = useState<Date | null>(null);
   const [monthlyEnd, setMonthlyEnd] = useState<Date | null>(null);
@@ -17,6 +17,7 @@ export function GlobalTimer() {
   const [customTime, setCustomTime] = useState<string>('');
   const [showWinnerPanel, setShowWinnerPanel] = useState(false);
   const [winnerInput, setWinnerInput] = useState('');
+  const [racerPositions, setRacerPositions] = useState<Record<string, string>>({});
   const [winnerType, setWinnerType] = useState<'TEAM' | 'RACER' | 'MONTHLY'>('TEAM');
   const [winnerOptions, setWinnerOptions] = useState<any[]>([]);
   const [showPostList, setShowPostList] = useState(false);
@@ -124,41 +125,40 @@ export function GlobalTimer() {
   const handleStopTimer = async (type: 'TEAM' | 'INDIVIDUAL' | 'MONTHLY') => {
     if (type === 'TEAM') {
       await supabase.from('app_settings').update({ team_timer_end: null }).eq('id', 1);
-      await supabase.from('racers').update({ is_posted: false }).eq('type', 'TEAM');
       setTeamEnd(null);
       setTeamTimeLeft(0);
     } else if (type === 'MONTHLY') {
       await supabase.from('app_settings').update({ monthly_timer_end: null }).eq('id', 1);
-      await supabase.from('racers').update({ is_posted: false }).in('type', ['MONTHLY_TEAM', 'MONTHLY_RACER']);
       setMonthlyEnd(null);
       setMonthlyTimeLeft(0);
     } else {
       await supabase.from('app_settings').update({ individual_timer_end: null }).eq('id', 1);
-      await supabase.from('racers').update({ is_posted: false }).not('type', 'in', '("TEAM", "MONTHLY_TEAM", "MONTHLY_RACER")');
       setIndEnd(null);
       setIndTimeLeft(0);
     }
   };
   
   const handleAnnounceWinner = async () => {
-    if (!winnerInput.trim()) return;
+    if (Object.keys(racerPositions).length === 0) {
+      showError('Validation Error', 'No positions selected. Please assign at least one position.');
+      return;
+    }
     
     // Prevent announcement if timer is active
     if (winnerType === 'TEAM' && teamTimeLeft > 0) {
-      alert("Cannot announce team winner while TEAM WINDOW is still open!");
+      showError('Timer Active', 'Cannot announce team winner while TEAM WINDOW is still open!');
       return;
     }
     if (winnerType === 'MONTHLY' && monthlyTimeLeft > 0) {
-      alert("Cannot announce monthly winner while MONTHLY WINDOW is still open!");
+      showError('Timer Active', 'Cannot announce monthly winner while MONTHLY WINDOW is still open!');
       return;
     }
     if (winnerType === 'RACER' && indTimeLeft > 0) {
-      alert("Cannot announce racer winner while DRIVER WINDOW is still open!");
+      showError('Timer Active', 'Cannot announce racer winner while RACER WINDOW is still open!');
       return;
     }
 
-    const formattedWinner = winnerInput.trim();
-    
+    try {
     // --- PARIMUTUEL PAYOUT CALCULATION ---
     
     // 1. Get all currently posted racers in this category
@@ -166,7 +166,7 @@ export function GlobalTimer() {
     if (winnerType === 'TEAM') {
       postedFilter = { type: 'TEAM' };
     } else if (winnerType === 'MONTHLY') {
-      // Monthly includes both MONTHLY_TEAM and MONTHLY_RACER
+      // Monthly includes only MONTHLY_RACER
       postedFilter = null; // handled separately
     } else {
       postedFilter = null; // handled separately
@@ -177,7 +177,7 @@ export function GlobalTimer() {
       const { data } = await supabase.from('racers').select('id, name').eq('type', 'TEAM').eq('is_posted', true);
       postedRacers = data || [];
     } else if (winnerType === 'MONTHLY') {
-      const { data } = await supabase.from('racers').select('id, name').in('type', ['MONTHLY_TEAM', 'MONTHLY_RACER']).eq('is_posted', true);
+      const { data } = await supabase.from('racers').select('id, name').in('type', ['MONTHLY_RACER']).eq('is_posted', true);
       postedRacers = data || [];
     } else {
       const { data } = await supabase.from('racers').select('id, name, type').eq('is_posted', true);
@@ -185,21 +185,31 @@ export function GlobalTimer() {
     }
 
     const postedRacerIds = postedRacers.map((r: any) => r.id);
-    const winnerRacer = postedRacers.find((r: any) => r.name === formattedWinner);
-
-    if (winnerRacer && postedRacerIds.length > 0) {
+    if (postedRacerIds.length > 0) {
       // 2. Fetch all APPROVED bids on these posted racers that have not been settled yet
       const { data: allBids } = await supabase
         .from('bids')
-        .select('id, racer_id, user_id, amount')
+        .select('id, racer_id, user_id, amount, position_prediction')
         .eq('status', 'APPROVED')
         .eq('result', 'PENDING')
         .in('racer_id', postedRacerIds);
 
       if (allBids && allBids.length > 0) {
+        // Helper to check if exact pos matches prediction bucket
+        const isPositionInBucket = (exactPosStr: string, bucketStr: string) => {
+          if (!exactPosStr || !bucketStr) return false;
+          const pos = parseInt(exactPosStr, 10);
+          if (isNaN(pos)) return false;
+          const parts = bucketStr.split('-');
+          if (parts.length !== 2) return false;
+          const min = parseInt(parts[0], 10);
+          const max = parseInt(parts[1], 10);
+          return pos >= min && pos <= max;
+        };
+
         // 3. Calculate winning pool and losing pool
-        const winningBids = allBids.filter((b: any) => b.racer_id === winnerRacer.id);
-        const losingBids = allBids.filter((b: any) => b.racer_id !== winnerRacer.id);
+        const winningBids = allBids.filter((b: any) => isPositionInBucket(racerPositions[b.racer_id], b.position_prediction));
+        const losingBids = allBids.filter((b: any) => !isPositionInBucket(racerPositions[b.racer_id], b.position_prediction));
 
         const totalWinningPool = winningBids.reduce((sum: number, b: any) => sum + b.amount, 0);
         const totalLosingPool = losingBids.reduce((sum: number, b: any) => sum + b.amount, 0);
@@ -228,48 +238,144 @@ export function GlobalTimer() {
         // Log the payout details
         await supabase.from('audit_logs').insert([{
           action: 'ANNOUNCE_WINNER',
-          details: `Announced ${winnerType} winner: ${formattedWinner}. Winning pool: $${totalWinningPool}, Losing pool: $${totalLosingPool}. ${winningBids.length} winning bets, ${losingBids.length} losing bets.`
+          details: `Announced ${winnerType} positions. Winning pool: $${totalWinningPool}, Losing pool: $${totalLosingPool}. ${winningBids.length} winning bets, ${losingBids.length} losing bets.`
         }]);
+      }
+    }
+
+    // --- UPDATE TOURNAMENT TELEMETRY FOR PARTICIPANTS ---
+    for (const racerId of postedRacerIds) {
+      if (racerPositions[racerId]) {
+        const exactPosStr = racerPositions[racerId];
+        let exactPos = 15;
+        let isDnf = false;
+        let isDsq = false;
+        if (exactPosStr === 'DNF') isDnf = true;
+        else if (exactPosStr === 'DSQ') isDsq = true;
+        else exactPos = parseInt(exactPosStr, 10) || 15;
+
+        const { data: racerData } = await supabase.from('racers').select('races, wins, avg_pos, tournament_points, type').eq('id', racerId).single();
+        if (racerData) {
+          const oldRaces = racerData.races || 0;
+          const oldWins = racerData.wins || 0;
+          const oldAvgPos = racerData.avg_pos || 0;
+          const oldPoints = racerData.tournament_points || 0;
+          
+          if (isDnf || isDsq) {
+             exactPos = racerData.type === 'TEAM' ? 15 : 45;
+          }
+
+          let earnedPoints = 0;
+          if (isDnf) earnedPoints = -2;
+          else if (isDsq) earnedPoints = -10;
+          else if (exactPos === 1) earnedPoints = 30;
+          else if (exactPos === 2) earnedPoints = 27;
+          else if (exactPos === 3) earnedPoints = 25;
+          else if (exactPos === 4) earnedPoints = 23;
+          else if (exactPos === 5) earnedPoints = 21;
+          else if (exactPos === 6) earnedPoints = 20;
+          else if (exactPos === 7) earnedPoints = 19;
+          else if (exactPos === 8) earnedPoints = 18;
+          else if (exactPos === 9) earnedPoints = 17;
+          else if (exactPos === 10) earnedPoints = 16;
+          else if (exactPos === 11) earnedPoints = 15;
+          else if (exactPos === 12) earnedPoints = 14;
+          else if (exactPos === 13) earnedPoints = 13;
+          else if (exactPos === 14) earnedPoints = 12;
+          else if (exactPos === 15) earnedPoints = 11;
+          else if (exactPos === 16) earnedPoints = 10;
+          else if (exactPos === 17) earnedPoints = 9;
+          else if (exactPos === 18) earnedPoints = 8;
+          else if (exactPos === 19) earnedPoints = 7;
+          else if (exactPos === 20) earnedPoints = 6;
+          else if (exactPos === 21) earnedPoints = 5;
+          else if (exactPos === 22) earnedPoints = 4;
+          else if (exactPos === 23) earnedPoints = 3;
+          else if (exactPos === 24) earnedPoints = 2;
+          else if (exactPos >= 25 && exactPos <= 42) earnedPoints = 1;
+          else earnedPoints = 0;
+          
+          const newRaces = oldRaces + 1;
+          const isWin = !isDnf && !isDsq && exactPos >= 1 && exactPos <= 3;
+          const newWins = oldWins + (isWin ? 1 : 0);
+          const newWinRate = Math.round((newWins / newRaces) * 100);
+          
+          const newAvgPos = Math.round(((oldAvgPos * oldRaces) + exactPos) / newRaces);
+          const newPoints = oldPoints + earnedPoints;
+
+          await supabase.from('racers').update({
+            races: newRaces,
+            wins: newWins,
+            win_rate: newWinRate,
+            avg_pos: newAvgPos,
+            tournament_points: newPoints
+          }).eq('id', racerId);
+        }
       }
     }
     
     // --- UPDATE LATEST WINNER DISPLAY ---
-    const updateData: any = {};
-    updateData.latest_winner = `${winnerType}: ${formattedWinner}`;
+    let firstPlaceId: string | null = null;
+    for (const [id, pos] of Object.entries(racerPositions)) {
+      if (parseInt(pos as string, 10) === 1) {
+        firstPlaceId = id;
+        break;
+      }
+    }
     
-    if (winnerType === 'TEAM') {
-      updateData.latest_team_winner = formattedWinner;
-    } else if (winnerType === 'MONTHLY') {
-      updateData.latest_monthly_winner = formattedWinner;
-    } else {
-      updateData.latest_racer_winner = formattedWinner;
+    let winnerName = 'POSITIONS LOGGED';
+    if (firstPlaceId) {
+      const firstPlaceRacer = postedRacers.find(r => r.id === firstPlaceId);
+      if (firstPlaceRacer) winnerName = firstPlaceRacer.name;
     }
 
-    const { data: settings } = await supabase.from('app_settings').select('current_round_id').single();
+    const updateData: any = {};
+    updateData.latest_winner = winnerName;
+    
+    if (winnerType === 'TEAM') {
+      updateData.latest_team_winner = winnerName;
+    } else if (winnerType === 'MONTHLY') {
+      updateData.latest_monthly_winner = winnerName;
+    } else {
+      updateData.latest_racer_winner = winnerName;
+    }
+
+    const { data: settings } = await supabase.from('app_settings').select('current_round_id').maybeSingle();
     const newRoundId = (settings?.current_round_id || 1) + 1;
+    
+    updateData.id = 1;
     updateData.current_round_id = newRoundId;
 
-    await supabase.from('app_settings').update(updateData).eq('id', 1);
+    await supabase.from('app_settings').upsert(updateData, { onConflict: 'id' });
     
     // Auto unpost and reset bids to zero for fresh start
     if (winnerType === 'TEAM') {
       await supabase.from('racers').update({ is_posted: false, current_bid: 0 }).eq('type', 'TEAM');
     } else if (winnerType === 'MONTHLY') {
-      await supabase.from('racers').update({ is_posted: false, current_bid: 0 }).in('type', ['MONTHLY_TEAM', 'MONTHLY_RACER']);
+      await supabase.from('racers').update({ is_posted: false, current_bid: 0 }).in('type', ['MONTHLY_RACER']);
     } else {
-      await supabase.from('racers').update({ is_posted: false, current_bid: 0 }).not('type', 'in', '("TEAM", "MONTHLY_TEAM", "MONTHLY_RACER")');
+      await supabase.from('racers').update({ is_posted: false, current_bid: 0 })
+        .neq('type', 'TEAM')
+        .neq('type', 'MONTHLY_RACER');
     }
 
     setShowWinnerPanel(false);
     setWinnerInput('');
+    setRacerPositions({});
+    showSuccess('Success', 'Positions logged successfully!');
+    } catch (err: any) {
+      console.error(err);
+      showError('Fatal Error', err.message);
+    }
   };
 
   const handleOpenWinnerPanel = async () => {
     setShowWinnerPanel(true);
     // Fetch all currently posted racers to show in the dropdown
-    const { data } = await supabase.from('racers').select('name, type').eq('is_posted', true).order('name');
+    const { data } = await supabase.from('racers').select('id, name, type').eq('is_posted', true).order('name');
     if (data) setWinnerOptions(data);
     setWinnerInput(''); // reset
+    setRacerPositions({});
   };
 
   const handleOpenPostList = async () => {
@@ -381,6 +487,49 @@ export function GlobalTimer() {
     setAllRacers(allRacers.map(r => r.id === id ? { ...r, is_posted: !currentStatus } : r));
   };
 
+  const handleCancelBets = (type: 'TEAM' | 'RACER') => {
+    showConfirm(
+      'CANCEL BETS',
+      `Are you sure you want to completely CANCEL and wipe all current bets for ${type}s? This action cannot be undone.`,
+      async () => {
+        try {
+          let racerQuery = supabase.from('racers').select('id');
+          if (type === 'TEAM') {
+            racerQuery = racerQuery.eq('type', 'TEAM');
+          } else {
+            racerQuery = racerQuery.neq('type', 'TEAM').neq('type', 'MONTHLY_RACER');
+          }
+          
+          const { data: racersToCancel, error: rErr } = await racerQuery;
+          if (rErr) throw rErr;
+          if (!racersToCancel || racersToCancel.length === 0) return;
+          
+          const racerIds = racersToCancel.map(r => r.id);
+          
+          // Update all pending bids for these racers to REFUNDED
+          const { error: delErr } = await supabase.from('bids').update({ result: 'REFUNDED' }).in('racer_id', racerIds).eq('result', 'PENDING');
+          if (delErr) throw delErr;
+          
+          // Reset current_bid to 0
+          const { error: updErr } = await supabase.from('racers').update({ current_bid: 0 }).in('id', racerIds);
+          if (updErr) throw updErr;
+          
+          // Audit log
+          await supabase.from('audit_logs').insert([{
+            action: 'CANCEL_BETS',
+            details: `All pending bets for ${type}s have been cancelled and reset to $0.`
+          }]);
+          
+          setShowHostPanel(false);
+          showSuccess('Success', `Successfully cancelled all ${type} bets!`);
+        } catch (err: any) {
+          console.error(err);
+          showError('Failed', 'Failed to cancel bets: ' + err.message);
+        }
+      }
+    );
+  };
+
   const formatTime = (secs: number) => {
     const hrs = Math.floor(secs / 3600);
     const m = Math.floor((secs % 3600) / 60);
@@ -406,11 +555,11 @@ export function GlobalTimer() {
       }}>
         {/* TEAM TIMER */}
         <div style={{ pointerEvents: 'auto', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          <div className="glass-panel" style={{ 
+          <div className={`glass-panel timer-panel ${teamTimeLeft > 0 ? 'timer-active-red' : 'timer-closed'}`} style={{ 
             padding: '1.5rem', 
-            borderLeft: teamTimeLeft > 0 ? '4px solid var(--accent-primary)' : '4px solid #555',
             textAlign: 'center',
-            minWidth: '180px'
+            minWidth: '180px',
+            zIndex: 10
           }}>
             <p className="text-mono" style={{ color: teamTimeLeft > 0 ? 'var(--accent-primary)' : 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '0.5rem', letterSpacing: '2px' }}>
               TEAM WINDOW
@@ -421,7 +570,7 @@ export function GlobalTimer() {
           </div>
 
           {(role === 'admin' || role === 'agent') && (
-            <div className="glass-panel" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <div className="glass-panel animate-drop" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '-0.25rem', zIndex: 0 }}>
               <div style={{ display: 'flex', gap: '0.25rem' }}>
                 <button onClick={() => handleSetTimer(5, 'TEAM')} className="btn-secondary" style={{ flex: 1, padding: '0.25rem', fontSize: '0.65rem' }}>+5M</button>
                 <button onClick={() => handleSetTimer(60, 'TEAM')} className="btn-secondary" style={{ flex: 1, padding: '0.25rem', fontSize: '0.65rem' }}>+1H</button>
@@ -438,14 +587,14 @@ export function GlobalTimer() {
 
         {/* INDIVIDUAL TIMER */}
         <div style={{ pointerEvents: 'auto', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          <div className="glass-panel" style={{ 
+          <div className={`glass-panel timer-panel ${indTimeLeft > 0 ? 'timer-active-green' : 'timer-closed'}`} style={{ 
             padding: '1.5rem', 
-            borderLeft: indTimeLeft > 0 ? '4px solid #00ff88' : '4px solid #555',
             textAlign: 'center',
-            minWidth: '180px'
+            minWidth: '180px',
+            zIndex: 10
           }}>
             <p className="text-mono" style={{ color: indTimeLeft > 0 ? '#00ff88' : 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '0.5rem', letterSpacing: '2px' }}>
-              DRIVER WINDOW
+              RACER WINDOW
             </p>
             <p style={{ fontSize: '2rem', fontWeight: 900, color: indTimeLeft > 0 ? '#fff' : '#666', fontFamily: 'monospace' }}>
               {indTimeLeft > 0 ? formatTime(indTimeLeft) : 'CLOSED'}
@@ -453,7 +602,7 @@ export function GlobalTimer() {
           </div>
 
           {(role === 'admin' || role === 'agent') && (
-            <div className="glass-panel" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <div className="glass-panel animate-drop" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '-0.25rem', zIndex: 0 }}>
               <div style={{ display: 'flex', gap: '0.25rem' }}>
                 <button onClick={() => handleSetTimer(5, 'INDIVIDUAL')} className="btn-secondary" style={{ flex: 1, padding: '0.25rem', fontSize: '0.65rem' }}>+5M</button>
                 <button onClick={() => handleSetTimer(60, 'INDIVIDUAL')} className="btn-secondary" style={{ flex: 1, padding: '0.25rem', fontSize: '0.65rem' }}>+1H</button>
@@ -470,11 +619,11 @@ export function GlobalTimer() {
 
         {/* MONTHLY TIMER */}
         <div style={{ pointerEvents: 'auto', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          <div className="glass-panel" style={{ 
+          <div className={`glass-panel timer-panel ${monthlyTimeLeft > 0 ? 'timer-active-blue' : 'timer-closed'}`} style={{ 
             padding: '1.5rem', 
-            borderLeft: monthlyTimeLeft > 0 ? '4px solid #ff00ff' : '4px solid #555',
             textAlign: 'center',
-            minWidth: '180px'
+            minWidth: '180px',
+            zIndex: 10
           }}>
             <p className="text-mono" style={{ color: monthlyTimeLeft > 0 ? '#ff00ff' : 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '0.5rem', letterSpacing: '2px' }}>
               MONTHLY WINDOW
@@ -485,7 +634,7 @@ export function GlobalTimer() {
           </div>
 
           {(role === 'admin' || role === 'agent') && (
-            <div className="glass-panel" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <div className="glass-panel animate-drop" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '-0.25rem', zIndex: 0 }}>
               <div style={{ display: 'flex', gap: '0.25rem' }}>
                 <button onClick={() => handleSetTimer(5, 'MONTHLY')} className="btn-secondary" style={{ flex: 1, padding: '0.25rem', fontSize: '0.65rem' }}>+5M</button>
                 <button onClick={() => handleSetTimer(60, 'MONTHLY')} className="btn-secondary" style={{ flex: 1, padding: '0.25rem', fontSize: '0.65rem' }}>+1H</button>
@@ -537,10 +686,10 @@ export function GlobalTimer() {
             boxShadow: '0 10px 40px rgba(242, 24, 24, 0.2)'
           }}>
             <h3 className="title-gradient" style={{ fontSize: '2rem', textTransform: 'uppercase', textAlign: 'center' }}>
-              ANNOUNCE LATEST WINNER
+              RACE RESULTS
             </h3>
             <p className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center' }}>
-              Enter the winner's name to broadcast to all terminals.
+              Select the STARTED BIDDING RACE to enter final positions.
             </p>
             
             <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
@@ -549,37 +698,61 @@ export function GlobalTimer() {
                 className={winnerType === 'TEAM' ? 'btn-primary' : 'btn-secondary'} 
                 style={{ flex: 1, padding: '0.75rem', fontSize: '0.85rem' }}
               >
-                TEAM WINNER
+                TEAM RACE (STARTED)
               </button>
               <button 
                 onClick={() => { setWinnerType('RACER'); setWinnerInput(''); }} 
                 className={winnerType === 'RACER' ? 'btn-primary' : 'btn-secondary'} 
                 style={{ flex: 1, padding: '0.75rem', fontSize: '0.85rem' }}
               >
-                RACER WINNER
+                RACER RACE (STARTED)
               </button>
               <button 
                 onClick={() => { setWinnerType('MONTHLY'); setWinnerInput(''); }} 
                 className={winnerType === 'MONTHLY' ? 'btn-primary' : 'btn-secondary'} 
                 style={{ flex: 1, padding: '0.75rem', fontSize: '0.85rem' }}
               >
-                MONTHLY WINNER
+                MONTHLY RACE (STARTED)
               </button>
             </div>
 
-            <select 
-              className="input-base" 
-              style={{ width: '100%', padding: '1rem', fontSize: '1.2rem', textAlign: 'center', marginTop: '0.5rem' }} 
-              value={winnerInput} 
-              onChange={e => setWinnerInput(e.target.value)} 
-            >
-              <option value="" disabled>Select {winnerType}...</option>
+            <div style={{ marginTop: '1rem' }}>
+              <input 
+                type="text" 
+                placeholder="Search participant..." 
+                className="input-base" 
+                style={{ width: '100%', padding: '0.75rem', fontSize: '0.85rem' }}
+                value={winnerInput}
+                onChange={(e) => setWinnerInput(e.target.value)}
+              />
+            </div>
+
+            <div style={{ maxHeight: '400px', overflowY: 'auto', marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', paddingRight: '0.5rem' }}>
               {winnerOptions
-                .filter(r => winnerType === 'TEAM' ? r.type === 'TEAM' : winnerType === 'MONTHLY' ? (r.type === 'MONTHLY_TEAM' || r.type === 'MONTHLY_RACER') : (r.type !== 'TEAM' && r.type !== 'MONTHLY_TEAM' && r.type !== 'MONTHLY_RACER'))
-                .map((r, i) => (
-                  <option key={i} value={r.name}>{r.name}</option>
+                .filter(r => winnerType === 'TEAM' ? r.type === 'TEAM' : winnerType === 'MONTHLY' ? (r.type === 'MONTHLY_RACER') : (r.type !== 'TEAM' && r.type !== 'MONTHLY_RACER'))
+                .filter(r => r.name.toLowerCase().includes(winnerInput.toLowerCase()))
+                .map((r) => (
+                  <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.05)', padding: '0.5rem 1rem', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                    <span className="text-mono" style={{ color: '#fff', fontSize: '0.85rem' }}>{r.name}</span>
+                    <select 
+                      className="input-base" 
+                      value={racerPositions[r.id] || ''}
+                      onChange={e => setRacerPositions(prev => ({ ...prev, [r.id]: e.target.value }))}
+                      style={{ width: '150px', padding: '0.5rem', fontSize: '0.85rem', appearance: 'none', background: 'rgba(0,0,0,0.5)', cursor: 'pointer' }}
+                    >
+                      <option value="" disabled>Position...</option>
+                      {(r.type === 'TEAM' ? 
+                        Array.from({ length: 15 }, (_, i) => String(i + 1)) : 
+                        Array.from({ length: 45 }, (_, i) => String(i + 1))
+                      ).concat(['DNF', 'DSQ']).filter(opt => opt === 'DNF' || opt === 'DSQ' || opt === racerPositions[r.id] || !Object.values(racerPositions).includes(opt))
+                      .map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    </select>
+                  </div>
               ))}
-            </select>
+              {winnerOptions.filter(r => winnerType === 'TEAM' ? r.type === 'TEAM' : winnerType === 'MONTHLY' ? (r.type === 'MONTHLY_RACER') : (r.type !== 'TEAM' && r.type !== 'MONTHLY_RACER')).length === 0 && (
+                <p className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '1rem' }}>No active participants in this category.</p>
+              )}
+            </div>
             
             {((winnerType === 'TEAM' && teamTimeLeft > 0) || (winnerType === 'RACER' && indTimeLeft > 0) || (winnerType === 'MONTHLY' && monthlyTimeLeft > 0)) && (
               <p className="text-mono" style={{ color: '#f21818', fontSize: '0.75rem', textAlign: 'center', marginTop: '0.5rem' }}>
@@ -644,7 +817,7 @@ export function GlobalTimer() {
                 className={postListTab === 'RACER' ? 'btn-primary' : 'btn-secondary'} 
                 style={{ flex: 1, padding: '0.75rem', fontSize: '0.85rem' }}
               >
-                DRIVERS
+                RACERS
               </button>
               <button 
                 onClick={() => setPostListTab('MONTHLY')} 
@@ -669,13 +842,13 @@ export function GlobalTimer() {
                   className={monthlySubTab === 'RACER' ? 'btn-primary' : 'btn-secondary'} 
                   style={{ flex: 1, padding: '0.5rem', fontSize: '0.75rem' }}
                 >
-                  MONTHLY DRIVERS
+                  MONTHLY RACERS
                 </button>
               </div>
             )}
 
             <div className="input-base" style={{ height: '350px', overflowY: 'auto', padding: '1rem', marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {allRacers.filter(r => postListTab === 'TEAM' ? r.type === 'TEAM' : postListTab === 'MONTHLY' ? r.type === (monthlySubTab === 'TEAM' ? 'MONTHLY_TEAM' : 'MONTHLY_RACER') : (r.type !== 'TEAM' && r.type !== 'MONTHLY_TEAM' && r.type !== 'MONTHLY_RACER')).map(racer => (
+              {allRacers.filter(r => postListTab === 'TEAM' ? r.type === 'TEAM' : postListTab === 'MONTHLY' ? r.type === 'MONTHLY_RACER' : (r.type !== 'TEAM' && r.type !== 'MONTHLY_RACER')).map(racer => (
                 <div key={racer.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
                   <div>
                     <p style={{ fontWeight: 'bold', fontSize: '1.2rem', color: '#fff' }}>{racer.name}</p>
@@ -737,7 +910,7 @@ export function GlobalTimer() {
                   handleOpenWinnerPanel();
                 }}
               >
-                ANNOUNCE WINNER
+                RACE RESULTS
               </button>
 
               <button 
@@ -761,6 +934,23 @@ export function GlobalTimer() {
               >
                 START BIDDING
               </button>
+
+              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                <button 
+                  className="btn-secondary" 
+                  style={{ flex: 1, padding: '1rem', fontSize: '0.75rem', border: '1px solid #f21818', color: '#f21818' }}
+                  onClick={() => handleCancelBets('RACER')}
+                >
+                  CANCEL RACER BET
+                </button>
+                <button 
+                  className="btn-secondary" 
+                  style={{ flex: 1, padding: '1rem', fontSize: '0.75rem', border: '1px solid #f21818', color: '#f21818' }}
+                  onClick={() => handleCancelBets('TEAM')}
+                >
+                  CANCEL TEAM BET
+                </button>
+              </div>
             </div>
 
             <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
@@ -841,7 +1031,7 @@ export function GlobalTimer() {
                   </div>
 
                   <div style={{ flex: 1, padding: '1rem', background: 'rgba(0, 255, 136, 0.05)', border: '1px solid #00ff88', borderRadius: '4px' }}>
-                    <h4 className="text-mono" style={{ color: '#00ff88', fontSize: '0.85rem', marginBottom: '1rem', textAlign: 'center' }}>DRIVER SETTINGS</h4>
+                    <h4 className="text-mono" style={{ color: '#00ff88', fontSize: '0.85rem', marginBottom: '1rem', textAlign: 'center' }}>RACER SETTINGS</h4>
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
                       <div style={{ flex: 1 }}>
                         <label className="text-mono" style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.25rem', display: 'block' }}>TIMER (MINUTES)</label>

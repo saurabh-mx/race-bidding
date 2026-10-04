@@ -5,13 +5,14 @@ import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import { useModal } from '@/components/ModalProvider';
 import { verifySecurityCode } from '@/app/actions';
+import Leaderboard from '@/components/Leaderboard';
 
 type Role = 'viewer' | 'agent' | 'admin';
 
 type Racer = {
   id: string;
   name: string;
-  type: 'TEAM' | 'INDIVIDUAL' | 'WEEKLY' | 'MONTHLY_TEAM' | 'MONTHLY_RACER';
+  type: 'TEAM' | 'INDIVIDUAL' | 'WEEKLY' | 'MONTHLY_RACER';
   current_bid: number;
   status: 'ACTIVE' | 'CLOSED';
   captain_name?: string;
@@ -52,13 +53,16 @@ export default function Dashboard() {
   const [bettorName, setBettorName] = useState<string>('');
   const [cid, setCid] = useState<string>('');
   const [imageLink, setImageLink] = useState<string>('');
+  const [positionPrediction, setPositionPrediction] = useState<string>('');
   const [loginId, setLoginId] = useState<string>('');
   const [displayName, setDisplayName] = useState<string>('');
   const [userId, setUserId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'ALL' | 'TEAM' | 'INDIVIDUAL' | 'MONTHLY'>('ALL');
-  const [monthlySubTab, setMonthlySubTab] = useState<'TEAM' | 'RACER'>('TEAM');
   const [isLoading, setIsLoading] = useState(true);
   const [activeRace, setActiveRace] = useState<any>(null);
+  const [editModalRacerId, setEditModalRacerId] = useState<string | null>(null);
+  const [adjustingBetRacerId, setAdjustingBetRacerId] = useState<string | null>(null);
+  const [adjustBetAmount, setAdjustBetAmount] = useState<string>('');
   
   const [isSecurityVerified, setIsSecurityVerified] = useState(false);
   const [securityCodeInput, setSecurityCodeInput] = useState('');
@@ -173,7 +177,7 @@ export default function Dashboard() {
 
     // Validate min_bet
     const { data: raceInfo } = await supabase.from('races').select('*').eq('id', roundId).single();
-    const minBet = racer.type === 'TEAM' || racer.type === 'MONTHLY_TEAM' ? (raceInfo?.team_min_bet || 0) : (raceInfo?.racer_min_bet || 0);
+    const minBet = racer.type === 'TEAM' ? (raceInfo?.team_min_bet || 0) : (raceInfo?.racer_min_bet || 0);
 
     if (amount < minBet) {
       showError('Invalid Bet', `Bet amount must be at least $${minBet} for this participant.`);
@@ -188,6 +192,7 @@ export default function Dashboard() {
         bidder_name: loginId, 
         status: isViewer ? 'PENDING' : 'APPROVED', 
         round_id: roundId,
+        position_prediction: positionPrediction,
         bettor_name: bettorName,
         cid: cid,
         image_link: imageLink
@@ -224,6 +229,50 @@ export default function Dashboard() {
     setBettorName('');
     setCid('');
     setImageLink('');
+    setPositionPrediction('');
+  };
+
+  const handleAdjustBet = async (racerId: string, amountChange: number) => {
+    const racer = data.find(r => r.id === racerId);
+    if (!racer) return;
+    
+    const newBid = Math.max(0, racer.current_bid + amountChange);
+    
+    const { error } = await supabase.from('racers').update({ current_bid: newBid }).eq('id', racerId);
+    if (error) {
+      showError('Failed', 'Failed to adjust bet: ' + error.message);
+    } else {
+      await supabase.from('audit_logs').insert([{
+        user_id: userId,
+        action: 'ADJUST_BET',
+        details: `${loginId} manually adjusted bet for ${racer.name} by ${amountChange > 0 ? '+' : ''}$${amountChange}. New total: $${newBid}`
+      }]);
+      showConfirm('Success', `Total bet adjusted successfully to $${newBid}`, () => {});
+      setEditModalRacerId(null);
+    }
+  };
+
+  const handleDeleteRacerBets = (racerId: string) => {
+    showConfirm('DELETE ALL BETS', 'Are you sure you want to delete ALL pending bets for this racer? This will reset their total to $0 and delete the bet history.', async () => {
+      const racer = data.find(r => r.id === racerId);
+      if (!racer) return;
+      
+      try {
+        await supabase.from('bids').update({ result: 'REFUNDED' }).eq('racer_id', racerId).eq('result', 'PENDING');
+        await supabase.from('racers').update({ current_bid: 0 }).eq('id', racerId);
+        
+        await supabase.from('audit_logs').insert([{
+          user_id: userId,
+          action: 'DELETE_BETS',
+          details: `${loginId} deleted all pending bets for ${racer.name}.`
+        }]);
+        
+        showConfirm('Success', `All bets deleted for ${racer.name}`, () => {});
+        setEditModalRacerId(null);
+      } catch (err: any) {
+        showError('Failed', 'Failed to delete bets: ' + err.message);
+      }
+    });
   };
 
   const handleLogout = async () => {
@@ -373,7 +422,7 @@ export default function Dashboard() {
           {(() => {
             const isWindowOpen = racer.type === 'TEAM' 
               ? isTeamBettingOpen 
-              : (racer.type === 'MONTHLY_TEAM' || racer.type === 'MONTHLY_RACER' ? isMonthlyBettingOpen : isIndBettingOpen);
+              : (racer.type === 'MONTHLY_RACER' ? isMonthlyBettingOpen : isIndBettingOpen);
             
             // Can always bet if window is open. If closed, ONLY admin can bet.
             const canBet = isWindowOpen || role === 'admin';
@@ -396,7 +445,7 @@ export default function Dashboard() {
           })()}
           
           {(role === 'agent' || role === 'admin') && (
-            <button className="btn-secondary" style={{ flex: '0 0 auto', padding: '0.85rem 1rem' }} onClick={e => { e.stopPropagation(); router.push(`/racer/${racer.id}`); }}>
+            <button className="btn-secondary" style={{ flex: '0 0 auto', padding: '0.85rem 1rem' }} onClick={e => { e.stopPropagation(); setEditModalRacerId(racer.id); }}>
               EDIT
             </button>
           )}
@@ -424,7 +473,7 @@ export default function Dashboard() {
         </Link>
         <div style={{ display: 'flex', gap: '2rem', flex: 1, justifyContent: 'center' }}>
           <Link href="/teams" className="text-mono" style={{ color: '#fff', textDecoration: 'none', fontSize: '0.85rem', letterSpacing: '1px' }}>TEAMS</Link>
-          <Link href="/drivers" className="text-mono" style={{ color: '#fff', textDecoration: 'none', fontSize: '0.85rem', letterSpacing: '1px' }}>DRIVERS</Link>
+          <Link href="/drivers" className="text-mono" style={{ color: '#fff', textDecoration: 'none', fontSize: '0.85rem', letterSpacing: '1px' }}>RACERS</Link>
           <Link href="#" className="text-mono" style={{ color: 'var(--text-muted)', textDecoration: 'none', fontSize: '0.85rem', letterSpacing: '1px' }}>RULES</Link>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
@@ -465,8 +514,16 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <div className="container" style={{ marginTop: '2rem' }}>
-        <div className="animate-in" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '3rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '1rem' }}>
+      <div className="container" style={{ marginTop: '2rem', display: 'flex', gap: '2rem', alignItems: 'flex-start' }}>
+        
+        {/* LEADERBOARD SIDEBAR */}
+        <div style={{ flex: '0 0 300px', position: 'sticky', top: '100px', height: 'calc(100vh - 120px)' }}>
+          <Leaderboard />
+        </div>
+
+        {/* MAIN CONTENT */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="animate-in" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '3rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '1rem' }}>
           <div>
             <h2 className="title-gradient" style={{ fontSize: '3rem', textTransform: 'uppercase' }}>Live Terminal</h2>
             <p className="text-mono" style={{ color: 'var(--accent-primary)', fontSize: '0.85rem', marginTop: '0.5rem', letterSpacing: '2px', display: 'flex', alignItems: 'center' }}>
@@ -500,34 +557,16 @@ export default function Dashboard() {
           ))}
         </div>
 
-        {activeTab === 'MONTHLY' && (
-          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '2rem', justifyContent: 'center' }}>
-            <button
-              onClick={() => setMonthlySubTab('TEAM')}
-              className={monthlySubTab === 'TEAM' ? 'btn-primary' : 'btn-secondary'}
-              style={{ padding: '0.5rem 1.5rem', fontSize: '0.75rem' }}
-            >
-              MONTHLY TEAMS
-            </button>
-            <button
-              onClick={() => setMonthlySubTab('RACER')}
-              className={monthlySubTab === 'RACER' ? 'btn-primary' : 'btn-secondary'}
-              style={{ padding: '0.5rem 1.5rem', fontSize: '0.75rem' }}
-            >
-              MONTHLY DRIVERS
-            </button>
-          </div>
-        )}
-
         <div className="grid-3">
-          {data.filter(r => r.is_posted === true && ((activeTab === 'ALL' && !r.type.startsWith('MONTHLY_')) || (activeTab === 'INDIVIDUAL' && r.type !== 'TEAM' && !r.type.startsWith('MONTHLY_')) || (activeTab === 'MONTHLY' && r.type === (monthlySubTab === 'TEAM' ? 'MONTHLY_TEAM' : 'MONTHLY_RACER')) || r.type === activeTab)).length === 0 ? (
+          {data.filter(r => r.is_posted === true && ((activeTab === 'ALL' && !r.type.startsWith('MONTHLY_')) || (activeTab === 'INDIVIDUAL' && r.type !== 'TEAM' && !r.type.startsWith('MONTHLY_')) || (activeTab === 'MONTHLY' && r.type === 'MONTHLY_RACER') || r.type === activeTab)).length === 0 ? (
              <div className="glass-panel text-mono animate-in" style={{ gridColumn: '1 / -1', padding: '4rem', textAlign: 'center', color: 'var(--text-muted)' }}>
                 NO ACTIVE BETS DETECTED.<br/><br/>
                 AWAITING AGENT TO POST BETS.
              </div>
           ) : (
-            data.filter(r => r.is_posted === true && ((activeTab === 'ALL' && !r.type.startsWith('MONTHLY_')) || (activeTab === 'INDIVIDUAL' && r.type !== 'TEAM' && !r.type.startsWith('MONTHLY_')) || (activeTab === 'MONTHLY' && r.type === (monthlySubTab === 'TEAM' ? 'MONTHLY_TEAM' : 'MONTHLY_RACER')) || r.type === activeTab)).map((racer, idx) => renderCard(racer, idx))
+            data.filter(r => r.is_posted === true && ((activeTab === 'ALL' && !r.type.startsWith('MONTHLY_')) || (activeTab === 'INDIVIDUAL' && r.type !== 'TEAM' && !r.type.startsWith('MONTHLY_')) || (activeTab === 'MONTHLY' && r.type === 'MONTHLY_RACER') || r.type === activeTab)).map((racer, idx) => renderCard(racer, idx))
           )}
+        </div>
         </div>
       </div>
 
@@ -538,7 +577,7 @@ export default function Dashboard() {
             
             {(() => {
               const r = data.find(r => r.id === biddingId);
-              const minBet = r?.type === 'TEAM' || r?.type === 'MONTHLY_TEAM' ? (activeRace?.team_min_bet || 0) : (activeRace?.racer_min_bet || 0);
+              const minBet = r?.type === 'TEAM' ? (activeRace?.team_min_bet || 0) : (activeRace?.racer_min_bet || 0);
               const isBetValid = Number(bidAmount) >= minBet;
               
               return (
@@ -560,6 +599,23 @@ export default function Dashboard() {
                   required
                   autoFocus
                 />
+              </div>
+
+              <div>
+                <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem' }}>POSITION PREDICTION</label>
+                <select 
+                  className="input-base" 
+                  value={positionPrediction}
+                  onChange={(e) => setPositionPrediction(e.target.value)}
+                  style={{ width: '100%', appearance: 'none', background: 'rgba(0,0,0,0.5)', cursor: 'pointer' }}
+                  required
+                >
+                  <option value="" disabled>-- SELECT POSITION --</option>
+                  {(r?.type === 'TEAM' ? 
+                    ['1-3', '4-6', '7-9', '10-13', '13-15'] : 
+                    ['1-3', '4-6', '7-10', '11-15', '16-20', '21-25', '26-30', '31-35', '36-40', '41-45']
+                  ).map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                </select>
               </div>
 
               <div>
@@ -618,6 +674,75 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+
+      {editModalRacerId && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.9)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="glass-panel animate-in" style={{ padding: '3rem', width: '90%', maxWidth: '400px', border: '1px solid var(--accent-primary)' }}>
+            <h2 className="title-gradient" style={{ fontSize: '2rem', marginBottom: '1rem', textTransform: 'uppercase', textAlign: 'center' }}>MANAGE RACER</h2>
+            <p className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center' }}>
+              Select an action for this participant.
+            </p>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '2rem' }}>
+              <button className="btn-primary" onClick={() => {
+                setAdjustingBetRacerId(editModalRacerId);
+                setAdjustBetAmount('');
+              }} style={{ padding: '1rem', fontSize: '1rem' }}>ADJUST TOTAL BET</button>
+              
+              <button className="btn-secondary" onClick={() => {
+                handleDeleteRacerBets(editModalRacerId);
+              }} style={{ padding: '1rem', fontSize: '1rem', border: '1px solid #f21818', color: '#f21818' }}>DELETE ALL BETS</button>
+              
+              <button className="btn-secondary" onClick={() => {
+                router.push(`/racer/${editModalRacerId}`);
+              }} style={{ padding: '1rem', fontSize: '1rem' }}>EDIT RACER PROFILE</button>
+            </div>
+            
+            <div style={{ marginTop: '2rem' }}>
+              <button className="btn-secondary" onClick={() => setEditModalRacerId(null)} style={{ width: '100%', padding: '1rem', fontSize: '1rem' }}>CLOSE</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {adjustingBetRacerId && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.95)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="glass-panel animate-in" style={{ padding: '3rem', width: '90%', maxWidth: '400px', border: '1px solid var(--accent-primary)' }}>
+            <h2 className="title-gradient" style={{ fontSize: '2rem', marginBottom: '1rem', textTransform: 'uppercase', textAlign: 'center' }}>ADJUST BET</h2>
+            <p className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', marginBottom: '2rem' }}>
+              Enter amount to ADD to total bet (use negative number to subtract).
+            </p>
+            
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              if (adjustBetAmount && !isNaN(Number(adjustBetAmount))) {
+                handleAdjustBet(adjustingBetRacerId, Number(adjustBetAmount));
+                setAdjustingBetRacerId(null);
+              }
+            }} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+              <div>
+                <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem' }}>AMOUNT ($)</label>
+                <input 
+                  type="number" 
+                  className="input-base" 
+                  value={adjustBetAmount}
+                  onChange={(e) => setAdjustBetAmount(e.target.value)}
+                  placeholder="e.g. 500 or -500"
+                  style={{ width: '100%' }}
+                  required
+                  autoFocus
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
+                <button type="button" className="btn-secondary" onClick={() => setAdjustingBetRacerId(null)}>CANCEL</button>
+                <button type="submit" className="btn-primary">CONFIRM</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {!isSecurityVerified && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.95)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
           <div className="glass-panel animate-in" style={{ padding: '3rem', maxWidth: '400px', width: '90%', border: '1px solid var(--accent-primary)', textAlign: 'center' }}>

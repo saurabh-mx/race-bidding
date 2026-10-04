@@ -24,6 +24,7 @@ type Driver = {
 export default function DriversPage() {
   const router = useRouter();
   const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [role, setRole] = useState<string | null>(null);
   const { showError } = useModal();
@@ -37,6 +38,9 @@ export default function DriversPage() {
   const [newWinRate, setNewWinRate] = useState<number>(0);
   const [newAvgPos, setNewAvgPos] = useState<number>(0);
   const [newAcquisition, setNewAcquisition] = useState<number>(0);
+  const [newLogoUrl, setNewLogoUrl] = useState('');
+  const [newTeamName, setNewTeamName] = useState('');
+  const [teams, setTeams] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchRole = async () => {
@@ -53,7 +57,7 @@ export default function DriversPage() {
         .from('racers')
         .select('*')
         .neq('type', 'TEAM')
-        .neq('type', 'MONTHLY_TEAM')
+      // Monthly team excluded
         .neq('type', 'MONTHLY_RACER')
         .order('name');
         
@@ -61,6 +65,8 @@ export default function DriversPage() {
         .from('racers')
         .select('*')
         .eq('type', 'TEAM');
+      
+      if (teamsData) setTeams(teamsData);
 
       if (driversData) {
         const enrichedDrivers = driversData.map(driver => {
@@ -107,6 +113,8 @@ export default function DriversPage() {
       win_rate: newWinRate,
       avg_pos: newAvgPos,
       acquisition: newAcquisition,
+      logo_url: newLogoUrl,
+      team_name: newTeamName || null,
       current_bid: 0,
       status: 'ACTIVE'
     }]);
@@ -123,7 +131,7 @@ export default function DriversPage() {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <p className="text-mono animate-in" style={{ color: 'var(--accent-primary)', fontSize: '1.2rem', letterSpacing: '4px' }}>
-          LOADING DRIVERS...
+          LOADING RACERS...
         </p>
       </div>
     );
@@ -143,15 +151,23 @@ export default function DriversPage() {
         </Link>
         <div className="nav-links">
           <Link href="/teams">TEAMS</Link>
-          <Link href="/drivers" style={{ color: '#fff' }}>DRIVERS</Link>
+          <Link href="/drivers" style={{ color: '#fff' }}>RACERS</Link>
           <Link href="#">RULES</Link>
           <Link href="/login">LIVE BET</Link>
         </div>
       </nav>
 
       <div className="container animate-in stagger-1" style={{ marginTop: '4rem', paddingBottom: '4rem', maxWidth: '1400px', width: '100%' }}>
-        {role === 'admin' && (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '2rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', gap: '1rem', flexWrap: 'wrap' }}>
+          <input 
+            type="text" 
+            placeholder="SEARCH RACERS OR TEAMS..." 
+            className="input-base text-mono" 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{ width: '100%', maxWidth: '400px', padding: '0.75rem 1rem', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: '4px' }}
+          />
+          {role === 'admin' && (
             <button 
               className="btn-primary" 
               onClick={() => setIsAddModalOpen(true)}
@@ -159,18 +175,25 @@ export default function DriversPage() {
             >
               + ADD RACER
             </button>
-          </div>
-        )}
+          )}
+        </div>
 
-        {[
-          { title: 'CAPTAINS', list: drivers.filter(d => d.racer_role === 'CAPTAIN') },
-          { title: 'RACERS', list: drivers.filter(d => d.racer_role !== 'CAPTAIN') }
-        ].map(group => group.list.length > 0 && (
+        {(() => {
+          const filteredDrivers = drivers.filter(d => d.name.toLowerCase().includes(searchQuery.toLowerCase()) || (d.team_name && d.team_name.toLowerCase().includes(searchQuery.toLowerCase())));
+          return [
+            { title: 'CAPTAINS', list: filteredDrivers.filter(d => d.racer_role === 'CAPTAIN') },
+            { title: 'S RACERS', list: filteredDrivers.filter(d => d.racer_role !== 'CAPTAIN' && d.type === 'S') },
+            { title: 'X RACERS', list: filteredDrivers.filter(d => d.racer_role !== 'CAPTAIN' && d.type === 'X') },
+            { title: 'A RACERS', list: filteredDrivers.filter(d => d.racer_role !== 'CAPTAIN' && d.type === 'A') },
+            { title: 'B RACERS', list: filteredDrivers.filter(d => d.racer_role !== 'CAPTAIN' && d.type === 'B') },
+            { title: 'C RACERS', list: filteredDrivers.filter(d => d.racer_role !== 'CAPTAIN' && d.type === 'C') },
+            { title: 'OTHER RACERS', list: filteredDrivers.filter(d => d.racer_role !== 'CAPTAIN' && !['S','X','A','B','C'].includes(d.type || '')) }
+          ].map(group => group.list.length > 0 && (
           <div key={group.title} style={{ marginBottom: '6rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '4rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '1rem' }}>
               <h1 className="title-gradient" style={{ fontSize: '2.5rem', fontStyle: 'italic', textTransform: 'uppercase' }}>{group.title}</h1>
               <div className="text-mono" style={{ border: '1px solid rgba(255,255,255,0.1)', padding: '0.5rem 1rem', fontSize: '0.75rem', borderRadius: '20px' }}>
-                {group.list.length} DRIVERS
+                {group.list.length} RACERS
               </div>
             </div>
             
@@ -238,7 +261,7 @@ export default function DriversPage() {
                   <div style={{ display: 'flex', flexDirection: 'column' }}>
                     <span className="text-mono" style={{ color: 'var(--accent-primary)', fontSize: '0.7rem', fontWeight: 'bold', textTransform: 'uppercase' }}>{driver.team_name || 'FREE AGENT'}</span>
                     <span className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.55rem' }}>
-                      {driver.type === 'INDIVIDUAL' ? '' : `CLASS ${driver.type} `}{driver.racer_role || 'RACER'}
+                      {driver.type === 'INDIVIDUAL' ? '' : `${driver.type} `}{driver.racer_role || 'RACER'}
                     </span>
                   </div>
                 </div>
@@ -274,76 +297,93 @@ export default function DriversPage() {
               ))}
             </div>
           </div>
-        ))}
+        ))})()}
       </div>
 
       {/* Add Racer Modal */}
       {isAddModalOpen && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.9)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div className="glass-panel animate-in" style={{ padding: '3rem', width: '90%', maxWidth: '500px', border: '1px solid var(--accent-primary)' }}>
-            <h2 className="title-gradient" style={{ fontSize: '2rem', marginBottom: '2rem', textTransform: 'uppercase' }}>ADD NEW RACER</h2>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '2rem' }}>
+          <div className="glass-panel animate-in" style={{ padding: '3rem', width: '100%', maxWidth: '1000px', maxHeight: '90vh', overflowY: 'auto', border: '1px solid var(--accent-primary)' }}>
+            <h2 className="title-gradient" style={{ fontSize: '2.5rem', marginBottom: '2rem', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '1rem' }}>SYSTEM CONFIG // NEW ENTITY</h2>
             
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginBottom: '2rem' }}>
-              <div>
-                <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem' }}>DRIVER NAME</label>
-                <input 
-                  type="text" 
-                  className="input-base" 
-                  style={{ width: '100%' }}
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  placeholder="Enter racer name"
-                />
-              </div>
+            <form onSubmit={(e) => { e.preventDefault(); handleAddRacer(); }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '3rem', marginBottom: '3rem' }}>
+                
+                {/* Column 1: Primary Entity Data */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                  <h3 className="text-mono" style={{ color: 'var(--accent-primary)' }}>[ PRIMARY DATA ]</h3>
+                  
+                  <div>
+                    <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '0.5rem', display: 'block' }}>ENTITY_NAME</label>
+                    <input type="text" className="input-base" value={newName} onChange={e => setNewName(e.target.value)} required placeholder="Enter racer name" style={{ width: '100%' }} />
+                  </div>
+                  <div>
+                    <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '0.5rem', display: 'block' }}>RACER CLASS</label>
+                    <select className="input-base" value={newType} onChange={e => setNewType(e.target.value)} style={{ appearance: 'none', background: 'rgba(0,0,0,0.5)', cursor: 'pointer', width: '100%' }}>
+                      <option value="S">CLASS S</option>
+                      <option value="X">CLASS X</option>
+                      <option value="A">CLASS A</option>
+                      <option value="B">CLASS B</option>
+                      <option value="C">CLASS C</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '0.5rem', display: 'block' }}>LOGO_URL (OPTIONAL)</label>
+                    <input type="text" className="input-base" value={newLogoUrl} onChange={e => setNewLogoUrl(e.target.value)} placeholder="https://..." style={{ width: '100%' }} />
+                  </div>
+                  
+                  <div style={{ display: 'flex', gap: '1rem', flexDirection: 'column' }}>
+                    <div>
+                      <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '0.5rem', display: 'block' }}>RACER ROLE</label>
+                      <select className="input-base" value={newRole} onChange={e => setNewRole(e.target.value)} style={{ appearance: 'none', background: 'rgba(0,0,0,0.5)', cursor: 'pointer', width: '100%' }}>
+                        <option value="RACER">RACER</option>
+                        <option value="CAPTAIN">CAPTAIN</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '0.5rem', display: 'block' }}>TEAM ASSIGNMENT</label>
+                      <select className="input-base" value={newTeamName} onChange={e => setNewTeamName(e.target.value)} style={{ appearance: 'none', background: 'rgba(0,0,0,0.5)', cursor: 'pointer', width: '100%' }}>
+                        <option value="">-- FREE AGENT --</option>
+                        {teams.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                </div>
 
-              <div style={{ display: 'flex', gap: '1rem' }}>
-                <div style={{ flex: 1 }}>
-                  <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem' }}>CLASS</label>
-                  <select className="input-base" style={{ width: '100%' }} value={newType} onChange={(e) => setNewType(e.target.value)}>
-                    <option value="S">CLASS S</option>
-                    <option value="X">CLASS X</option>
-                    <option value="A">CLASS A</option>
-                    <option value="B">CLASS B</option>
-                    <option value="C">CLASS C</option>
-                  </select>
+                {/* Column 2: Telemetry Configuration */}
+                <div style={{ padding: '1.5rem', border: '1px solid rgba(255,255,255,0.1)', alignSelf: 'start' }}>
+                  <h4 className="text-mono" style={{ color: 'var(--accent-primary)', marginBottom: '1rem' }}>[ TELEMETRY CONFIG ]</h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                    <div>
+                      <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '0.5rem', display: 'block' }}>RACES COMPLETED</label>
+                      <input type="number" className="input-base" value={newRaces} onChange={e => setNewRaces(Number(e.target.value))} style={{ width: '100%' }} />
+                    </div>
+                    <div>
+                      <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '0.5rem', display: 'block' }}>TOTAL WINS</label>
+                      <input type="number" className="input-base" value={newWins} onChange={e => setNewWins(Number(e.target.value))} style={{ width: '100%' }} />
+                    </div>
+                    <div>
+                      <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '0.5rem', display: 'block' }}>WIN RATE (%)</label>
+                      <input type="number" step="0.1" className="input-base" value={newWinRate} onChange={e => setNewWinRate(Number(e.target.value))} style={{ width: '100%' }} />
+                    </div>
+                    <div>
+                      <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '0.5rem', display: 'block' }}>AVERAGE POSITION</label>
+                      <input type="number" step="0.1" className="input-base" value={newAvgPos} onChange={e => setNewAvgPos(Number(e.target.value))} style={{ width: '100%' }} />
+                    </div>
+                    <div style={{ gridColumn: '1 / -1' }}>
+                      <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '0.5rem', display: 'block' }}>ACQUISITION COST ($)</label>
+                      <input type="number" className="input-base" value={newAcquisition} onChange={e => setNewAcquisition(Number(e.target.value))} style={{ width: '100%' }} />
+                    </div>
+                  </div>
                 </div>
-                <div style={{ flex: 1 }}>
-                  <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem' }}>ROLE</label>
-                  <select className="input-base" style={{ width: '100%' }} value={newRole} onChange={(e) => setNewRole(e.target.value)}>
-                    <option value="CAPTAIN">CAPTAIN</option>
-                    <option value="RACER">RACER</option>
-                  </select>
-                </div>
-              </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                <div>
-                  <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem' }}>RACES</label>
-                  <input type="number" className="input-base" style={{ width: '100%' }} value={newRaces} onChange={(e) => setNewRaces(Number(e.target.value))} />
-                </div>
-                <div>
-                  <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem' }}>WINS</label>
-                  <input type="number" className="input-base" style={{ width: '100%' }} value={newWins} onChange={(e) => setNewWins(Number(e.target.value))} />
-                </div>
-                <div>
-                  <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem' }}>WIN RATE (%)</label>
-                  <input type="number" step="0.1" className="input-base" style={{ width: '100%' }} value={newWinRate} onChange={(e) => setNewWinRate(Number(e.target.value))} />
-                </div>
-                <div>
-                  <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem' }}>AVG POS</label>
-                  <input type="number" step="0.1" className="input-base" style={{ width: '100%' }} value={newAvgPos} onChange={(e) => setNewAvgPos(Number(e.target.value))} />
-                </div>
-                <div style={{ gridColumn: '1 / -1' }}>
-                  <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem' }}>ACQUISITION COST ($)</label>
-                  <input type="number" className="input-base" style={{ width: '100%' }} value={newAcquisition} onChange={(e) => setNewAcquisition(Number(e.target.value))} />
-                </div>
               </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
-              <button className="btn-secondary" onClick={() => setIsAddModalOpen(false)}>CANCEL</button>
-              <button className="btn-primary" onClick={handleAddRacer}>+ ADD DRIVER</button>
-            </div>
+              
+              <div style={{ display: 'flex', gap: '1rem', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '2rem' }}>
+                <button type="submit" className="btn-primary" style={{ flex: 2, padding: '1rem', fontSize: '1rem' }}>COMMIT SYSTEM CHANGES</button>
+                <button type="button" className="btn-secondary" onClick={() => setIsAddModalOpen(false)} style={{ flex: 1, padding: '1rem', fontSize: '1rem' }}>ABORT</button>
+              </div>
+            </form>
           </div>
         </div>
       )}
