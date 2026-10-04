@@ -56,6 +56,8 @@ export default function AdminPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [showLeaderboardEdit, setShowLeaderboardEdit] = useState(false);
   const [editingPoints, setEditingPoints] = useState<Record<string, number>>({});
+  const [leaderboardSearch, setLeaderboardSearch] = useState('');
+  const [leaderboardTab, setLeaderboardTab] = useState<'RACERS' | 'TEAMS'>('RACERS');
   const { showError, showSuccess } = useModal();
 
   useEffect(() => {
@@ -209,6 +211,8 @@ export default function AdminPage() {
       initialPoints[r.id] = r.tournament_points || 0;
     });
     setEditingPoints(initialPoints);
+    setLeaderboardSearch('');
+    setLeaderboardTab('RACERS');
     setShowLeaderboardEdit(true);
   };
 
@@ -514,20 +518,55 @@ export default function AdminPage() {
               Adjust tournament points manually. This directly affects the positions shown on the leaderboard.
             </p>
 
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem', flexDirection: 'column' }}>
+              <input 
+                type="text" 
+                placeholder="Search name..." 
+                className="input-base" 
+                value={leaderboardSearch}
+                onChange={e => setLeaderboardSearch(e.target.value)}
+                style={{ width: '100%', padding: '0.75rem', fontSize: '0.9rem' }}
+              />
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button 
+                  className={leaderboardTab === 'RACERS' ? 'btn-primary' : 'btn-secondary'} 
+                  onClick={() => setLeaderboardTab('RACERS')}
+                  style={{ flex: 1, padding: '0.5rem', fontSize: '0.85rem' }}
+                >
+                  RACERS
+                </button>
+                <button 
+                  className={leaderboardTab === 'TEAMS' ? 'btn-primary' : 'btn-secondary'} 
+                  onClick={() => setLeaderboardTab('TEAMS')}
+                  style={{ flex: 1, padding: '0.5rem', fontSize: '0.85rem' }}
+                >
+                  TEAMS
+                </button>
+              </div>
+            </div>
+
             <div style={{ overflowY: 'auto', flex: 1, paddingRight: '0.5rem', marginTop: '1rem' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', textAlign: 'left' }}>
                     <th className="text-mono" style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>NAME</th>
                     <th className="text-mono" style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>TYPE</th>
-                    <th className="text-mono" style={{ padding: '0.5rem', color: 'var(--text-muted)', width: '120px' }}>POINTS</th>
+                    <th className="text-mono" style={{ padding: '0.5rem', color: 'var(--text-muted)', width: '80px', textAlign: 'right' }}>CURRENT</th>
+                    <th className="text-mono" style={{ padding: '0.5rem', color: 'var(--text-muted)', width: '120px' }}>NEW POINTS</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {racers.sort((a,b) => (editingPoints[b.id] || 0) - (editingPoints[a.id] || 0)).map(r => (
+                  {racers.filter(r => {
+                    const matchesSearch = r.name.toLowerCase().includes(leaderboardSearch.toLowerCase());
+                    const matchesTab = leaderboardTab === 'TEAMS' ? r.type === 'TEAM' : r.type !== 'TEAM';
+                    return matchesSearch && matchesTab;
+                  }).sort((a,b) => (editingPoints[b.id] || 0) - (editingPoints[a.id] || 0)).map(r => (
                     <tr key={r.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                       <td style={{ padding: '0.5rem', color: '#fff', fontSize: '0.9rem' }}>{r.name}</td>
                       <td className="text-mono" style={{ padding: '0.5rem', color: 'var(--text-muted)', fontSize: '0.75rem' }}>{r.type}</td>
+                      <td className="text-mono" style={{ padding: '0.5rem', color: 'var(--accent-primary)', fontSize: '0.9rem', textAlign: 'right', fontWeight: 'bold' }}>
+                        {r.tournament_points || 0}
+                      </td>
                       <td style={{ padding: '0.5rem' }}>
                         <input 
                           type="number"
