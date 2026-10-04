@@ -515,7 +515,7 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <div className="container" style={{ marginTop: '2rem', display: 'flex', gap: '2rem', alignItems: 'flex-start' }}>
+      <div style={{ padding: '0 4vw', marginTop: '2rem', display: 'flex', gap: '2rem', alignItems: 'flex-start' }}>
         
         {/* LEADERBOARD SIDEBAR */}
         <div style={{ flex: '0 0 300px', position: 'sticky', top: '100px', height: 'calc(100vh - 120px)' }}>
