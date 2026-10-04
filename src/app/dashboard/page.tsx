@@ -435,8 +435,8 @@ export default function Dashboard() {
                   ADMIN
                 </Link>
               )}
-              <Link href="/AGENT" className="text-mono" style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem', textDecoration: 'none', border: '1px solid #ffaa00', color: '#ffaa00' }}>
-                AGENT
+              <Link href="/management" className="text-mono" style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem', textDecoration: 'none', border: '1px solid #ffaa00', color: '#ffaa00' }}>
+                MANAGEMENT
               </Link>
               <Link href="/pending" className="text-mono" style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem', textDecoration: 'none', border: '1px solid var(--accent-primary)', color: 'var(--accent-primary)' }}>
                 PENDING BETS
