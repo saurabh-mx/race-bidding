@@ -31,6 +31,7 @@ type Racer = {
   id: string;
   name: string;
   type: string;
+  tournament_points?: number;
 };
 
 type Bid = {
@@ -53,7 +54,9 @@ export default function AdminPage() {
   const [bids, setBids] = useState<Bid[]>([]);
   const [winningRacerId, setWinningRacerId] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
-  const { showError } = useModal();
+  const [showLeaderboardEdit, setShowLeaderboardEdit] = useState(false);
+  const [editingPoints, setEditingPoints] = useState<Record<string, number>>({});
+  const { showError, showSuccess } = useModal();
 
   useEffect(() => {
     const init = async () => {
@@ -200,6 +203,39 @@ export default function AdminPage() {
     }
   };
 
+  const handleOpenLeaderboardEdit = () => {
+    const initialPoints: Record<string, number> = {};
+    racers.forEach(r => {
+      initialPoints[r.id] = r.tournament_points || 0;
+    });
+    setEditingPoints(initialPoints);
+    setShowLeaderboardEdit(true);
+  };
+
+  const handleSaveLeaderboardPoints = async () => {
+    try {
+      const updates = Object.keys(editingPoints).map(racerId => {
+        return supabase
+          .from('racers')
+          .update({ tournament_points: editingPoints[racerId] })
+          .eq('id', racerId);
+      });
+      await Promise.all(updates);
+
+      const { data: allRacers } = await supabase
+        .from('racers')
+        .select('*')
+        .order('name', { ascending: true });
+        
+      if (allRacers) setRacers(allRacers);
+      
+      showSuccess('Success', 'Leaderboard points updated successfully.');
+      setShowLeaderboardEdit(false);
+    } catch (err: any) {
+      showError('Error', 'Failed to update points: ' + err.message);
+    }
+  };
+
   if (isLoading) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <p className="text-mono animate-in" style={{ color: 'var(--accent-primary)', fontSize: '1.2rem', letterSpacing: '4px' }}>
@@ -237,6 +273,15 @@ export default function AdminPage() {
               <span className="pulse-indicator"></span> 
               GLOBAL ACCESS CONTROL
             </p>
+          </div>
+          <div>
+            <button 
+              className="btn-primary" 
+              onClick={handleOpenLeaderboardEdit}
+              style={{ padding: '0.75rem 1.5rem', fontSize: '0.85rem' }}
+            >
+              EDIT LEADERBOARD PTS
+            </button>
           </div>
         </div>
 
@@ -438,6 +483,85 @@ export default function AdminPage() {
           )}
         </div>
       </div>
+
+      {/* LEADERBOARD EDIT MODAL */}
+      {showLeaderboardEdit && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+          backdropFilter: 'blur(5px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999
+        }}>
+          <div className="glass-panel animate-in" style={{ 
+            padding: '2rem', 
+            display: 'flex', 
+            flexDirection: 'column', 
+            gap: '1rem',
+            width: '90%',
+            maxWidth: '600px',
+            maxHeight: '90vh',
+            border: '1px solid var(--accent-primary)',
+            boxShadow: '0 10px 40px rgba(242, 24, 24, 0.2)'
+          }}>
+            <h3 className="title-gradient" style={{ fontSize: '2rem', textTransform: 'uppercase', textAlign: 'center' }}>
+              EDIT LEADERBOARD
+            </h3>
+            <p className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center' }}>
+              Adjust tournament points manually. This directly affects the positions shown on the leaderboard.
+            </p>
+
+            <div style={{ overflowY: 'auto', flex: 1, paddingRight: '0.5rem', marginTop: '1rem' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', textAlign: 'left' }}>
+                    <th className="text-mono" style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>NAME</th>
+                    <th className="text-mono" style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>TYPE</th>
+                    <th className="text-mono" style={{ padding: '0.5rem', color: 'var(--text-muted)', width: '120px' }}>POINTS</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {racers.sort((a,b) => (editingPoints[b.id] || 0) - (editingPoints[a.id] || 0)).map(r => (
+                    <tr key={r.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <td style={{ padding: '0.5rem', color: '#fff', fontSize: '0.9rem' }}>{r.name}</td>
+                      <td className="text-mono" style={{ padding: '0.5rem', color: 'var(--text-muted)', fontSize: '0.75rem' }}>{r.type}</td>
+                      <td style={{ padding: '0.5rem' }}>
+                        <input 
+                          type="number"
+                          className="input-base"
+                          style={{ width: '100%', padding: '0.5rem', fontSize: '0.9rem' }}
+                          value={editingPoints[r.id] ?? ''}
+                          onChange={(e) => setEditingPoints(prev => ({ ...prev, [r.id]: parseInt(e.target.value) || 0 }))}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+              <button 
+                onClick={() => setShowLeaderboardEdit(false)} 
+                className="btn-secondary" 
+                style={{ flex: 1, padding: '1rem', fontSize: '1rem' }}
+              >
+                CANCEL
+              </button>
+              <button 
+                onClick={handleSaveLeaderboardPoints} 
+                className="btn-primary" 
+                style={{ flex: 1, padding: '1rem', fontSize: '1rem' }}
+              >
+                SAVE CHANGES
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
