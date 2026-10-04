@@ -274,8 +274,8 @@ export default function RacerProfile() {
       return;
     }
 
-    const finalBettorName = (role === 'admin' || role === 'management') ? (bettorName || loginId) : loginId;
-    const finalCid = (role === 'admin' || role === 'management') ? cid : null;
+    const finalBettorName = (role === 'admin' || role === 'agent') ? (bettorName || loginId) : loginId;
+    const finalCid = (role === 'admin' || role === 'agent') ? cid : null;
 
     const { error: bidError } = await supabase.from('bids').insert([
       { 
@@ -308,7 +308,7 @@ export default function RacerProfile() {
           action: 'PENDING_BID',
           details: `${loginId} submitted a pending bet of $${amount} on ${racer.name} (ID: ${id})`
         }]);
-        showConfirm('Pending Approval', `Your bet of $${amount} has been submitted and is pending management approval.`, () => { window.location.reload(); });
+        showConfirm('Pending Approval', `Your bet of $${amount} has been submitted and is pending AGENT approval.`, () => { window.location.reload(); });
       }
     } else {
       console.error('Bet error:', bidError);
@@ -410,7 +410,7 @@ export default function RacerProfile() {
           <Link href="#" className="text-mono" style={{ color: 'var(--text-muted)', textDecoration: 'none', fontSize: '0.85rem', letterSpacing: '1px' }}>RULES</Link>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
-          {(role === 'management' || role === 'admin') && (
+          {(role === 'agent' || role === 'admin') && (
             <Link href="/pending" className="text-mono" style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem', textDecoration: 'none', border: '1px solid var(--accent-primary)', color: 'var(--accent-primary)' }}>
               PENDING BETS
             </Link>
@@ -422,7 +422,7 @@ export default function RacerProfile() {
             title="Go to Profile"
           >
             <span style={{ fontSize: '0.85rem', color: '#fff', fontWeight: 'bold' }}>{(displayName || loginId).toUpperCase()}</span>
-            <span style={{ fontSize: '0.65rem', color: role === 'admin' ? '#ff2a2a' : role === 'management' ? 'var(--accent-secondary)' : 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>
+            <span style={{ fontSize: '0.65rem', color: role === 'admin' ? '#ff2a2a' : role === 'agent' ? 'var(--accent-secondary)' : 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>
               OP: {role || 'UNKNOWN'}
             </span>
           </div>
@@ -757,7 +757,7 @@ export default function RacerProfile() {
                   <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)' }}>RACE</th>
                   <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)', textAlign: 'right' }}>AMOUNT</th>
                   <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)', textAlign: 'right' }}>PROFIT / LOSS</th>
-                  {(role === 'admin' || role === 'management') && (
+                  {(role === 'admin' || role === 'agent') && (
                     <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)', textAlign: 'right' }}>ACTION</th>
                   )}
                 </tr>
@@ -791,7 +791,7 @@ export default function RacerProfile() {
                         </td>
                       );
                     })()}
-                    {(role === 'admin' || role === 'management') && (
+                    {(role === 'admin' || role === 'agent') && (
                       <td style={{ padding: '1rem', textAlign: 'right' }}>
                         <button 
                           onClick={() => handleDeleteBet(bid.id, bid.amount)}
@@ -963,7 +963,7 @@ export default function RacerProfile() {
                 />
               </div>
 
-              {(role === 'admin' || role === 'management') && (
+              {(role === 'admin' || role === 'agent') && (
                 <>
                   <div>
                     <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem' }}>BETTOR NAME</label>

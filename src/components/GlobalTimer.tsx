@@ -420,7 +420,7 @@ export function GlobalTimer() {
             </p>
           </div>
 
-          {(role === 'admin' || role === 'management') && (
+          {(role === 'admin' || role === 'agent') && (
             <div className="glass-panel" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               <div style={{ display: 'flex', gap: '0.25rem' }}>
                 <button onClick={() => handleSetTimer(5, 'TEAM')} className="btn-secondary" style={{ flex: 1, padding: '0.25rem', fontSize: '0.65rem' }}>+5M</button>
@@ -452,7 +452,7 @@ export function GlobalTimer() {
             </p>
           </div>
 
-          {(role === 'admin' || role === 'management') && (
+          {(role === 'admin' || role === 'agent') && (
             <div className="glass-panel" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               <div style={{ display: 'flex', gap: '0.25rem' }}>
                 <button onClick={() => handleSetTimer(5, 'INDIVIDUAL')} className="btn-secondary" style={{ flex: 1, padding: '0.25rem', fontSize: '0.65rem' }}>+5M</button>
@@ -484,7 +484,7 @@ export function GlobalTimer() {
             </p>
           </div>
 
-          {(role === 'admin' || role === 'management') && (
+          {(role === 'admin' || role === 'agent') && (
             <div className="glass-panel" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               <div style={{ display: 'flex', gap: '0.25rem' }}>
                 <button onClick={() => handleSetTimer(5, 'MONTHLY')} className="btn-secondary" style={{ flex: 1, padding: '0.25rem', fontSize: '0.65rem' }}>+5M</button>
@@ -501,7 +501,7 @@ export function GlobalTimer() {
         </div>
 
         {/* HOST RACE BET BUTTON */}
-        {(role === 'admin' || role === 'management') && (
+        {(role === 'admin' || role === 'agent') && (
           <div style={{ pointerEvents: 'auto', marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
             <button 
               className="btn-primary" 

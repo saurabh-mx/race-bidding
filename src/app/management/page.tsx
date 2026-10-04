@@ -43,7 +43,7 @@ type BetDetail = {
   round_id?: number;
 };
 
-export default function ManagementPanel() {
+export default function AGENTPanel() {
   const router = useRouter();
   const [role, setRole] = useState<string | null>(null);
   const [loginId, setLoginId] = useState<string>('');
@@ -58,6 +58,7 @@ export default function ManagementPanel() {
   const [selectedRace, setSelectedRace] = useState<RaceStat | null>(null);
   const [displayName, setDisplayName] = useState<string>('');
   const [recentBets, setRecentBets] = useState<BetDetail[]>([]);
+  const [raceBetSearchQuery, setRaceBetSearchQuery] = useState('');
 
   useEffect(() => {
     const init = async () => {
@@ -79,7 +80,7 @@ export default function ManagementPanel() {
         setDisplayName(profile.display_name || '');
       }
 
-      if (profile?.role !== 'admin' && profile?.role !== 'management') {
+      if (profile?.role !== 'admin' && profile?.role !== 'agent') {
         router.replace('/dashboard');
         return;
       }
@@ -89,7 +90,7 @@ export default function ManagementPanel() {
 
     init();
 
-    const channel = supabase.channel('management_bids')
+    const channel = supabase.channel('AGENT_bids')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bids' }, () => {
         loadData();
       })
@@ -271,10 +272,10 @@ export default function ManagementPanel() {
     }
   }, [searchQuery, users]);
 
-  if (isLoading || (role !== 'admin' && role !== 'management')) return (
+  if (isLoading || (role !== 'admin' && role !== 'agent')) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <p className="text-mono animate-in" style={{ color: 'var(--accent-primary)', fontSize: '1.2rem', letterSpacing: '4px' }}>
-        LOADING MANAGEMENT PANEL...
+        LOADING AGENT PANEL...
       </p>
     </div>
   );
@@ -290,7 +291,7 @@ export default function ManagementPanel() {
         <Link href="/dashboard" style={{ textDecoration: 'none' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
             <img src="/logo.png" alt="Race Betting" style={{ height: '50px', width: 'auto', borderRadius: '50%' }} />
-            <h1 className="title-gradient" style={{ fontSize: '1.5rem', color: '#f21818' }}>RACEBET. <span style={{ color: '#fff', fontSize: '1rem' }}>// MANAGEMENT</span></h1>
+            <h1 className="title-gradient" style={{ fontSize: '1.5rem', color: '#f21818' }}>RACEBET. <span style={{ color: '#fff', fontSize: '1rem' }}>// AGENT</span></h1>
           </div>
         </Link>
         <div style={{ display: 'flex', gap: '2rem', flex: 1, justifyContent: 'center' }}>
@@ -323,7 +324,7 @@ export default function ManagementPanel() {
 
       <div style={{ flex: 1, padding: '2rem', maxWidth: '1400px', margin: '0 auto', width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-          <h2 className="title-gradient" style={{ fontSize: '2rem' }}>MANAGEMENT</h2>
+          <h2 className="title-gradient" style={{ fontSize: '2rem' }}>AGENT</h2>
           <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
             <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', padding: '0.25rem' }}>
               <button 
@@ -428,7 +429,7 @@ export default function ManagementPanel() {
                 <p className="text-mono" style={{ 
                   textAlign: 'right', 
                   fontSize: '0.75rem', 
-                  color: user.role === 'admin' ? '#ff2a2a' : user.role === 'management' ? '#ffaa00' : 'var(--text-muted)',
+                  color: user.role === 'admin' ? '#ff2a2a' : user.role === 'agent' ? '#ffaa00' : 'var(--text-muted)',
                   fontWeight: 700,
                   textTransform: 'uppercase'
                 }}>{user.role}</p>
@@ -595,7 +596,7 @@ export default function ManagementPanel() {
                 {/* Expanded Race Detail */}
                 {selectedRace?.round_id === race.round_id && selectedRace.bets.length > 0 && (
                   <div className="glass-panel animate-in" style={{ padding: '2rem', borderLeft: '4px solid var(--accent-primary)', marginBottom: '0.5rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
                       <div>
                         <h3 style={{ fontSize: '1.25rem', fontWeight: 900, color: '#fff' }}>
                           BET HISTORY — <span style={{ color: 'var(--accent-primary)' }}>RACE {selectedRace.round_id || 'UNKNOWN'}</span>
@@ -607,6 +608,14 @@ export default function ManagementPanel() {
                           </p>
                         )}
                       </div>
+                      <input
+                        type="text"
+                        placeholder="SEARCH NAME OR CID..."
+                        className="input-base text-mono"
+                        style={{ maxWidth: '300px' }}
+                        value={raceBetSearchQuery}
+                        onChange={(e) => setRaceBetSearchQuery(e.target.value)}
+                      />
                     </div>
 
                     <div className="text-mono" style={{ 
@@ -631,7 +640,13 @@ export default function ManagementPanel() {
                     </div>
 
                     <div style={{ maxHeight: '400px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                      {selectedRace.bets.map(bet => {
+                      {selectedRace.bets.filter(bet => {
+                        if (!raceBetSearchQuery) return true;
+                        const query = raceBetSearchQuery.toLowerCase();
+                        const matchName = bet.bettor_name?.toLowerCase().includes(query) || false;
+                        const matchCid = bet.cid?.toLowerCase().includes(query) || false;
+                        return matchName || matchCid;
+                      }).map(bet => {
                         const housePL = bet.result === 'WON' ? bet.amount - bet.payout : bet.result === 'LOST' ? bet.amount : 0;
                         
                         return (

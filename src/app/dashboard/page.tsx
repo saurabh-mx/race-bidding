@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useModal } from '@/components/ModalProvider';
 import { verifySecurityCode } from '@/app/actions';
 
-type Role = 'viewer' | 'management' | 'admin';
+type Role = 'viewer' | 'agent' | 'admin';
 
 type Racer = {
   id: string;
@@ -212,7 +212,7 @@ export default function Dashboard() {
           action: 'PENDING_BID',
           details: `${loginId} submitted a pending bet of $${amount} on ${racer?.name} (ID: ${biddingId})`
         }]);
-        showConfirm('Pending Approval', `Your bet of $${amount} has been submitted and is pending management approval.`, () => {});
+        showConfirm('Pending Approval', `Your bet of $${amount} has been submitted and is pending AGENT approval.`, () => {});
       }
     } else {
       console.error('Bid error:', bidError);
@@ -395,7 +395,7 @@ export default function Dashboard() {
             );
           })()}
           
-          {(role === 'management' || role === 'admin') && (
+          {(role === 'agent' || role === 'admin') && (
             <button className="btn-secondary" style={{ flex: '0 0 auto', padding: '0.85rem 1rem' }} onClick={e => { e.stopPropagation(); router.push(`/racer/${racer.id}`); }}>
               EDIT
             </button>
@@ -428,15 +428,15 @@ export default function Dashboard() {
           <Link href="#" className="text-mono" style={{ color: 'var(--text-muted)', textDecoration: 'none', fontSize: '0.85rem', letterSpacing: '1px' }}>RULES</Link>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
-          {(role === 'management' || role === 'admin') && (
+          {(role === 'agent' || role === 'admin') && (
             <>
               {role === 'admin' && (
                 <Link href="/admin" className="text-mono" style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem', textDecoration: 'none', border: '1px solid #cc44ff', color: '#cc44ff' }}>
                   ADMIN
                 </Link>
               )}
-              <Link href="/management" className="text-mono" style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem', textDecoration: 'none', border: '1px solid #ffaa00', color: '#ffaa00' }}>
-                MANAGEMENT
+              <Link href="/AGENT" className="text-mono" style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem', textDecoration: 'none', border: '1px solid #ffaa00', color: '#ffaa00' }}>
+                AGENT
               </Link>
               <Link href="/pending" className="text-mono" style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem', textDecoration: 'none', border: '1px solid var(--accent-primary)', color: 'var(--accent-primary)' }}>
                 PENDING BETS
@@ -450,7 +450,7 @@ export default function Dashboard() {
             title="Go to Profile"
           >
             <span style={{ fontSize: '0.85rem', color: '#fff', fontWeight: 'bold' }}>{(displayName || loginId).toUpperCase()}</span>
-            <span style={{ fontSize: '0.65rem', color: role === 'admin' ? '#ff2a2a' : role === 'management' ? 'var(--accent-secondary)' : 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>
+            <span style={{ fontSize: '0.65rem', color: role === 'admin' ? '#ff2a2a' : role === 'agent' ? 'var(--accent-secondary)' : 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>
               OP: {role || 'UNKNOWN'}
             </span>
           </div>
@@ -523,7 +523,7 @@ export default function Dashboard() {
           {data.filter(r => r.is_posted === true && ((activeTab === 'ALL' && !r.type.startsWith('MONTHLY_')) || (activeTab === 'INDIVIDUAL' && r.type !== 'TEAM' && !r.type.startsWith('MONTHLY_')) || (activeTab === 'MONTHLY' && r.type === (monthlySubTab === 'TEAM' ? 'MONTHLY_TEAM' : 'MONTHLY_RACER')) || r.type === activeTab)).length === 0 ? (
              <div className="glass-panel text-mono animate-in" style={{ gridColumn: '1 / -1', padding: '4rem', textAlign: 'center', color: 'var(--text-muted)' }}>
                 NO ACTIVE BETS DETECTED.<br/><br/>
-                AWAITING MANAGEMENT TO POST BETS.
+                AWAITING AGENT TO POST BETS.
              </div>
           ) : (
             data.filter(r => r.is_posted === true && ((activeTab === 'ALL' && !r.type.startsWith('MONTHLY_')) || (activeTab === 'INDIVIDUAL' && r.type !== 'TEAM' && !r.type.startsWith('MONTHLY_')) || (activeTab === 'MONTHLY' && r.type === (monthlySubTab === 'TEAM' ? 'MONTHLY_TEAM' : 'MONTHLY_RACER')) || r.type === activeTab)).map((racer, idx) => renderCard(racer, idx))

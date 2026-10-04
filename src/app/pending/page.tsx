@@ -42,7 +42,7 @@ export default function PendingBets() {
         setDisplayName(profile.display_name || '');
       }
 
-      if (profile?.role !== 'admin' && profile?.role !== 'management') {
+      if (profile?.role !== 'admin' && profile?.role !== 'agent') {
         router.replace('/dashboard');
         return;
       }
@@ -114,7 +114,7 @@ export default function PendingBets() {
     }
   };
 
-  if (isLoading || (role !== 'admin' && role !== 'management')) return null;
+  if (isLoading || (role !== 'admin' && role !== 'agent')) return null;
 
   return (
     <main style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -138,7 +138,7 @@ export default function PendingBets() {
             title="Go to Profile"
           >
             <span style={{ fontSize: '0.85rem', color: '#fff', fontWeight: 'bold' }}>{(displayName || loginId).toUpperCase()}</span>
-            <span style={{ fontSize: '0.65rem', color: role === 'admin' ? '#ff2a2a' : role === 'management' ? 'var(--accent-secondary)' : 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>
+            <span style={{ fontSize: '0.65rem', color: role === 'admin' ? '#ff2a2a' : role === 'agent' ? 'var(--accent-secondary)' : 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>
               OP: {role || 'UNKNOWN'}
             </span>
           </div>

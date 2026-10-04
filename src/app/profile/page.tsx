@@ -126,7 +126,7 @@ export default function UserProfile() {
           <Link href="#" className="text-mono" style={{ color: 'var(--text-muted)', textDecoration: 'none', fontSize: '0.85rem', letterSpacing: '1px' }}>RULES</Link>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
-          {(role === 'management' || role === 'admin') && (
+          {(role === 'agent' || role === 'admin') && (
             <Link href="/pending" className="text-mono" style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem', textDecoration: 'none', border: '1px solid var(--accent-primary)', color: 'var(--accent-primary)' }}>
               PENDING BETS
             </Link>
@@ -138,7 +138,7 @@ export default function UserProfile() {
             title="Go to Profile"
           >
             <span style={{ fontSize: '0.85rem', color: '#fff', fontWeight: 'bold' }}>{(displayName || loginId).toUpperCase()}</span>
-            <span style={{ fontSize: '0.65rem', color: role === 'admin' ? '#ff2a2a' : role === 'management' ? 'var(--accent-secondary)' : 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>
+            <span style={{ fontSize: '0.65rem', color: role === 'admin' ? '#ff2a2a' : role === 'agent' ? 'var(--accent-secondary)' : 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>
               OP: {role || 'UNKNOWN'}
             </span>
           </div>
@@ -152,24 +152,35 @@ export default function UserProfile() {
         <h2 className="title-gradient" style={{ fontSize: '2.5rem', marginBottom: '2rem', textTransform: 'uppercase' }}>{(displayName || loginId).toUpperCase()} // DOSSIER</h2>
         
         {/* STATS ROW */}
+        {(() => {
+          // For agents: flip perspective to show HOUSE P&L
+          const isAgent = role === 'agent' || role === 'admin';
+          // House earned = what clients lost (their bet amounts on losing bets)
+          const houseEarned = lostBids.reduce((sum, b) => sum + b.amount, 0);
+          // House paid = what clients won (their payouts on winning bets)
+          const housePaid = wonBids.reduce((sum, b) => sum + b.payout, 0);
+          // House net = earned - paid
+          const houseNet = houseEarned - housePaid;
+
+          return (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1rem', marginBottom: '3rem' }}>
           <div className="glass-panel animate-in" style={{ padding: '1.5rem', borderLeft: '4px solid var(--accent-primary)' }}>
             <p className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.7rem', marginBottom: '0.5rem', letterSpacing: '1px' }}>TOTAL INVESTED</p>
             <p style={{ fontSize: '2rem', fontWeight: 900, color: '#fff' }}>${totalInvested.toLocaleString()}</p>
           </div>
-          <div className="glass-panel animate-in" style={{ padding: '1.5rem', borderLeft: '4px solid #00ff88' }}>
-            <p className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.7rem', marginBottom: '0.5rem', letterSpacing: '1px' }}>TOTAL WON</p>
-            <p style={{ fontSize: '2rem', fontWeight: 900, color: '#00ff88' }}>${totalWon.toLocaleString()}</p>
-            <p className="text-mono" style={{ color: '#00ff88', fontSize: '0.65rem', marginTop: '0.25rem' }}>{wonBids.length} WINNING BET{wonBids.length !== 1 ? 'S' : ''}</p>
+          <div className="glass-panel animate-in" style={{ padding: '1.5rem', borderLeft: `4px solid ${isAgent ? '#00ff88' : '#00ff88'}` }}>
+            <p className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.7rem', marginBottom: '0.5rem', letterSpacing: '1px' }}>{isAgent ? 'CLIENTS LOST (HOUSE WON)' : 'TOTAL WON'}</p>
+            <p style={{ fontSize: '2rem', fontWeight: 900, color: '#00ff88' }}>${isAgent ? houseEarned.toLocaleString() : totalWon.toLocaleString()}</p>
+            <p className="text-mono" style={{ color: '#00ff88', fontSize: '0.65rem', marginTop: '0.25rem' }}>{isAgent ? `${lostBids.length} LOSING BET${lostBids.length !== 1 ? 'S' : ''}` : `${wonBids.length} WINNING BET${wonBids.length !== 1 ? 'S' : ''}`}</p>
           </div>
           <div className="glass-panel animate-in" style={{ padding: '1.5rem', borderLeft: '4px solid #ff4444' }}>
-            <p className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.7rem', marginBottom: '0.5rem', letterSpacing: '1px' }}>TOTAL LOST</p>
-            <p style={{ fontSize: '2rem', fontWeight: 900, color: '#ff4444' }}>${totalLost.toLocaleString()}</p>
-            <p className="text-mono" style={{ color: '#ff4444', fontSize: '0.65rem', marginTop: '0.25rem' }}>{lostBids.length} LOSING BET{lostBids.length !== 1 ? 'S' : ''}</p>
+            <p className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.7rem', marginBottom: '0.5rem', letterSpacing: '1px' }}>{isAgent ? 'CLIENTS WON (HOUSE PAID)' : 'TOTAL LOST'}</p>
+            <p style={{ fontSize: '2rem', fontWeight: 900, color: '#ff4444' }}>${isAgent ? housePaid.toLocaleString() : totalLost.toLocaleString()}</p>
+            <p className="text-mono" style={{ color: '#ff4444', fontSize: '0.65rem', marginTop: '0.25rem' }}>{isAgent ? `${wonBids.length} WINNING BET${wonBids.length !== 1 ? 'S' : ''}` : `${lostBids.length} LOSING BET${lostBids.length !== 1 ? 'S' : ''}`}</p>
           </div>
-          <div className="glass-panel animate-in" style={{ padding: '1.5rem', borderLeft: `4px solid ${netPL >= 0 ? '#00ff88' : '#ff4444'}` }}>
-            <p className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.7rem', marginBottom: '0.5rem', letterSpacing: '1px' }}>NET P&L</p>
-            <p style={{ fontSize: '2rem', fontWeight: 900, color: netPL >= 0 ? '#00ff88' : '#ff4444' }}>{netPL >= 0 ? '+' : ''}${netPL.toLocaleString()}</p>
+          <div className="glass-panel animate-in" style={{ padding: '1.5rem', borderLeft: `4px solid ${(isAgent ? houseNet : netPL) >= 0 ? '#00ff88' : '#ff4444'}` }}>
+            <p className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.7rem', marginBottom: '0.5rem', letterSpacing: '1px' }}>{isAgent ? 'RACEBET P&L' : 'NET P&L'}</p>
+            <p style={{ fontSize: '2rem', fontWeight: 900, color: (isAgent ? houseNet : netPL) >= 0 ? '#00ff88' : '#ff4444' }}>{(isAgent ? houseNet : netPL) >= 0 ? '+' : ''}${(isAgent ? houseNet : netPL).toLocaleString()}</p>
           </div>
           <div className="glass-panel animate-in" style={{ padding: '1.5rem', borderLeft: '4px solid #ffaa00' }}>
             <p className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.7rem', marginBottom: '0.5rem', letterSpacing: '1px' }}>PENDING ESCROW</p>
@@ -177,6 +188,8 @@ export default function UserProfile() {
             <p className="text-mono" style={{ color: '#ffaa00', fontSize: '0.65rem', marginTop: '0.25rem' }}>{activeBids.length} ACTIVE BET{activeBids.length !== 1 ? 'S' : ''}</p>
           </div>
         </div>
+          );
+        })()}
 
         {/* P&L GRAPH */}
         {chartData.length > 0 && (

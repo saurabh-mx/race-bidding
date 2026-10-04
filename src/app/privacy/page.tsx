@@ -29,7 +29,7 @@ export default function PrivacyPolicy() {
               <h2 style={{ color: '#fff', marginBottom: '0.5rem' }}>2. DATA WE COLLECT</h2>
               <p>We may collect, use, store and transfer different kinds of personal data about you which we have grouped together as follows:</p>
               <ul style={{ paddingLeft: '1.5rem', marginTop: '0.5rem' }}>
-                <li><strong>Identity Data:</strong> includes your management profile information.</li>
+                <li><strong>Identity Data:</strong> includes your agent profile information.</li>
                 <li><strong>Contact Data:</strong> includes your email address.</li>
                 <li><strong>Technical Data:</strong> includes internet protocol (IP) address, your login data, and browser type.</li>
               </ul>
