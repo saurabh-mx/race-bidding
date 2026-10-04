@@ -161,7 +161,7 @@ h1, h2, h3, h4, h5, h6 {
 
 /* Layout Utilities */
 .container {
-  max-width: 1300px;
+  max-width: 96%;
   margin: 0 auto;
   padding: 2rem;
 }

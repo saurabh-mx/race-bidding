@@ -157,7 +157,7 @@ export default function DriversPage() {
         </div>
       </nav>
 
-      <div className="container animate-in stagger-1" style={{ marginTop: '4rem', paddingBottom: '4rem', maxWidth: '1400px', width: '100%' }}>
+      <div className="container animate-in stagger-1" style={{ marginTop: '2rem', paddingBottom: '6rem', maxWidth: '96%', width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', gap: '1rem', flexWrap: 'wrap' }}>
           <input 
             type="text" 
@@ -190,14 +190,17 @@ export default function DriversPage() {
             { title: 'OTHER RACERS', list: filteredDrivers.filter(d => d.racer_role !== 'CAPTAIN' && !['S','X','A','B','C'].includes(d.type || '')) }
           ].map(group => group.list.length > 0 && (
           <div key={group.title} style={{ marginBottom: '6rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '4rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '1rem' }}>
-              <h1 className="title-gradient" style={{ fontSize: '2.5rem', fontStyle: 'italic', textTransform: 'uppercase' }}>{group.title}</h1>
-              <div className="text-mono" style={{ border: '1px solid rgba(255,255,255,0.1)', padding: '0.5rem 1rem', fontSize: '0.75rem', borderRadius: '20px' }}>
-                {group.list.length} RACERS
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '4rem', borderBottom: '1px solid var(--accent-primary)', paddingBottom: '1.5rem' }}>
+              <div>
+                <h1 className="title-gradient" style={{ fontSize: '3.5rem', fontStyle: 'italic', textTransform: 'uppercase', margin: 0, lineHeight: 1 }}>{group.title}</h1>
+                <p className="text-mono" style={{ color: 'var(--text-muted)', marginTop: '0.5rem', letterSpacing: '2px' }}>OFFICIAL ROSTER</p>
+              </div>
+              <div className="text-mono" style={{ border: '1px solid var(--accent-primary)', background: 'rgba(242,24,24,0.1)', padding: '0.75rem 1.5rem', fontSize: '0.85rem', borderRadius: '4px', color: 'var(--accent-primary)' }}>
+                {group.list.length} ACTIVE
               </div>
             </div>
             
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1.5rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: '3rem' }}>
               {group.list.map((driver, idx) => (
             <div 
               key={driver.id} 
@@ -213,12 +216,12 @@ export default function DriversPage() {
                 overflow: 'hidden',
                 transition: 'all 0.3s ease',
                 position: 'relative',
-                minHeight: '480px'
+                minHeight: '520px'
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.borderColor = 'var(--accent-primary)';
-                e.currentTarget.style.transform = 'translateY(-5px)';
-                e.currentTarget.style.boxShadow = '0 10px 30px rgba(242, 24, 24, 0.2)';
+                e.currentTarget.style.transform = 'translateY(-8px) scale(1.02)';
+                e.currentTarget.style.boxShadow = '0 15px 40px rgba(242, 24, 24, 0.3), inset 0 0 20px rgba(242, 24, 24, 0.1)';
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)';
@@ -226,7 +229,7 @@ export default function DriversPage() {
                 e.currentTarget.style.boxShadow = 'none';
               }}
             >
-              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '350px', background: '#111', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '380px', background: '#111', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 {driver.logo_url ? (
                   <img src={driver.logo_url} alt={driver.name} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }} />
                 ) : (
@@ -234,23 +237,23 @@ export default function DriversPage() {
                 )}
                 
                 {/* Gradient overlay at bottom of image */}
-                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '150px', background: 'linear-gradient(to top, rgba(10,10,10,1), transparent)' }}></div>
+                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '200px', background: 'linear-gradient(to top, rgba(10,10,10,1), transparent)' }}></div>
                 
                 {/* SOLD badge */}
                 {driver.status === 'SOLD' && (
-                  <div style={{ position: 'absolute', top: '15px', right: '15px', background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(255,255,255,0.3)', padding: '4px 12px', borderRadius: '12px', backdropFilter: 'blur(4px)' }}>
-                    <span className="text-mono" style={{ fontSize: '0.65rem', color: '#fff', fontWeight: 'bold' }}>SOLD</span>
+                  <div style={{ position: 'absolute', top: '15px', right: '15px', background: 'rgba(0,0,0,0.8)', border: '1px solid rgba(255,255,255,0.3)', padding: '6px 16px', borderRadius: '12px', backdropFilter: 'blur(4px)' }}>
+                    <span className="text-mono" style={{ fontSize: '0.75rem', color: '#fff', fontWeight: 'bold' }}>SOLD</span>
                   </div>
                 )}
               </div>
 
               {/* Spacer to push the inner card down */}
-              <div style={{ height: '220px' }}></div>
+              <div style={{ height: '260px' }}></div>
 
               {/* Inner Black Card */}
-              <div style={{ background: '#070707', borderRadius: '16px 16px 0 0', padding: '1.5rem', zIndex: 2, position: 'relative', flex: 1, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                <span className="text-mono" style={{ color: driver.racer_role === 'CAPTAIN' ? '#ffb300' : 'var(--text-muted)', fontSize: '0.65rem', letterSpacing: '2px', textTransform: 'uppercase' }}>{driver.racer_role || 'RACER'}</span>
-                <h3 style={{ fontSize: '2rem', fontStyle: 'italic', fontWeight: 900, textTransform: 'uppercase', marginBottom: '0.5rem', lineHeight: 1 }}>{driver.name}</h3>
+              <div style={{ background: '#070707', borderRadius: '16px 16px 0 0', padding: '2rem', zIndex: 2, position: 'relative', flex: 1, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                <span className="text-mono" style={{ color: driver.racer_role === 'CAPTAIN' ? '#ffb300' : 'var(--accent-secondary)', fontSize: '0.75rem', letterSpacing: '2px', textTransform: 'uppercase' }}>{driver.racer_role || 'RACER'}</span>
+                <h3 style={{ fontSize: '2.5rem', fontStyle: 'italic', fontWeight: 900, textTransform: 'uppercase', marginBottom: '1rem', lineHeight: 1, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{driver.name}</h3>
                 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem', minHeight: '35px' }}>
                   {driver.team_logo ? (

@@ -4,8 +4,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import { useModal } from '@/components/ModalProvider';
-
-type Role = 'viewer' | 'agent' | 'admin';
+type Role = 'viewer' | 'agent' | 'management' | 'admin';
 
 type Profile = {
   id: string;
@@ -317,9 +316,9 @@ export default function AdminPage() {
                   <td className="text-mono" style={{ padding: '1rem', fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)' }}>{profile.id}</td>
                   <td style={{ padding: '1rem' }}>
                     <span className="text-mono" style={{ 
-                      background: profile.role === 'admin' ? 'rgba(255, 42, 42, 0.2)' : profile.role === 'agent' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.05)',
-                      color: profile.role === 'admin' ? '#ff2a2a' : profile.role === 'agent' ? 'var(--accent-secondary)' : '#fff',
-                      border: `1px solid ${profile.role === 'admin' ? '#ff2a2a' : profile.role === 'agent' ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.1)'}`,
+                      background: profile.role === 'admin' ? 'rgba(255, 42, 42, 0.2)' : (profile.role === 'management' || profile.role === 'agent') ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.05)',
+                      color: profile.role === 'admin' ? '#ff2a2a' : (profile.role === 'management' || profile.role === 'agent') ? 'var(--accent-secondary)' : '#fff',
+                      border: `1px solid ${profile.role === 'admin' ? '#ff2a2a' : (profile.role === 'management' || profile.role === 'agent') ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.1)'}`,
                       padding: '0.25rem 0.5rem', 
                       fontSize: '0.75rem', 
                       fontWeight: 700 
@@ -335,7 +334,8 @@ export default function AdminPage() {
                       style={{ padding: '0.5rem', width: 'auto' }}
                     >
                       <option value="viewer">VIEWER</option>
-                      <option value="AGENT">AGENT</option>
+                      <option value="agent">AGENT</option>
+                      <option value="management">MANAGEMENT</option>
                       <option value="admin">ADMIN</option>
                     </select>
                   </td>

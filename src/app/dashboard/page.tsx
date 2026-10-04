@@ -445,7 +445,7 @@ export default function Dashboard() {
             );
           })()}
           
-          {(role === 'agent' || role === 'admin') && (
+          {(role === 'agent' || role === 'management' || role === 'admin') && (
             <button className="btn-secondary" style={{ flex: '0 0 auto', padding: '0.85rem 1rem' }} onClick={e => { e.stopPropagation(); setEditModalRacerId(racer.id); }}>
               EDIT
             </button>
@@ -478,7 +478,7 @@ export default function Dashboard() {
           <Link href="#" className="text-mono" style={{ color: 'var(--text-muted)', textDecoration: 'none', fontSize: '0.85rem', letterSpacing: '1px' }}>RULES</Link>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
-          {(role === 'agent' || role === 'admin') && (
+          {(role === 'agent' || role === 'management' || role === 'admin') && (
             <>
               {role === 'admin' && (
                 <Link href="/admin" className="text-mono" style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem', textDecoration: 'none', border: '1px solid #cc44ff', color: '#cc44ff' }}>
@@ -500,7 +500,7 @@ export default function Dashboard() {
             title="Go to Profile"
           >
             <span style={{ fontSize: '0.85rem', color: '#fff', fontWeight: 'bold' }}>{(displayName || loginId).toUpperCase()}</span>
-            <span style={{ fontSize: '0.65rem', color: role === 'admin' ? '#ff2a2a' : role === 'agent' ? 'var(--accent-secondary)' : 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>
+            <span style={{ fontSize: '0.65rem', color: role === 'admin' ? '#ff2a2a' : (role === 'agent' || role === 'management') ? 'var(--accent-secondary)' : 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>
               OP: {role || 'UNKNOWN'}
             </span>
           </div>

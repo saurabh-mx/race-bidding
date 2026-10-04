@@ -86,6 +86,7 @@ export default function RacerProfile() {
   const [isIndBettingOpen, setIsIndBettingOpen] = useState(false);
   const [isMonthlyBettingOpen, setIsMonthlyBettingOpen] = useState(false);
   const [selectedRosterSlot, setSelectedRosterSlot] = useState<number>(0);
+  const [betReceipt, setBetReceipt] = useState<{ id: string, status: string, amount: number } | null>(null);
 
   useEffect(() => {
     const handleTeamBetStatus = (e: any) => setIsTeamBettingOpen(e.detail);
@@ -155,6 +156,41 @@ export default function RacerProfile() {
           if (myTeam) displayTeam = myTeam.name;
         }
         racerData.displayTeam = displayTeam;
+
+        // Fetch Results to compute Tournament Telemetry dynamically
+        const { data: resultsData } = await supabase
+          .from('results')
+          .select('position, is_dnf, is_dsq')
+          .eq('racer_id', id);
+
+        if (resultsData) {
+          const tRaces = resultsData.length;
+          const tWins = resultsData.filter(r => r.position === 1 && !r.is_dnf && !r.is_dsq).length;
+          const tWinRate = tRaces > 0 ? Math.round((tWins / tRaces) * 100) : 0;
+          
+          let sumPos = 0;
+          let validPosCount = 0;
+          resultsData.forEach(r => {
+            if (!r.is_dnf && !r.is_dsq && r.position > 0) {
+              sumPos += r.position;
+              validPosCount++;
+            }
+          });
+          const tAvgPos = validPosCount > 0 ? Math.round(sumPos / validPosCount) : 0;
+
+          racerData.tournament_races = tRaces;
+          racerData.tournament_wins = tWins;
+          racerData.tournament_win_rate = tWinRate;
+          racerData.tournament_avg_pos = tAvgPos;
+          
+          // Auto-sync back to db
+          await supabase.from('racers').update({
+            tournament_races: tRaces,
+            tournament_wins: tWins,
+            tournament_win_rate: tWinRate,
+            tournament_avg_pos: tAvgPos
+          }).eq('id', id);
+        }
 
         setRacer(racerData);
         setEditName(racerData.name);
@@ -227,11 +263,7 @@ export default function RacerProfile() {
         avg_pos: editAvgPos,
         acquisition: editAcquisition,
         team_name: editType !== 'TEAM' ? editTeamName : null,
-        racer_role: editType !== 'TEAM' ? editRacerRole : null,
-        tournament_races: editTournamentRaces,
-        tournament_wins: editTournamentWins,
-        tournament_win_rate: editTournamentWinRate,
-        tournament_avg_pos: editTournamentAvgPos
+        racer_role: editType !== 'TEAM' ? editRacerRole : null
       })
       .eq('id', id);
 
@@ -255,11 +287,7 @@ export default function RacerProfile() {
         avg_pos: editAvgPos,
         acquisition: editAcquisition,
         team_name: editType !== 'TEAM' ? editTeamName : undefined,
-        racer_role: editType !== 'TEAM' ? editRacerRole : undefined,
-        tournament_races: editTournamentRaces,
-        tournament_wins: editTournamentWins,
-        tournament_win_rate: editTournamentWinRate,
-        tournament_avg_pos: editTournamentAvgPos
+        racer_role: editType !== 'TEAM' ? editRacerRole : undefined
       } : null);
       setIsEditing(false);
       window.location.reload();
@@ -298,8 +326,10 @@ export default function RacerProfile() {
       return;
     }
 
-    const finalBettorName = (role === 'admin' || role === 'agent') ? (bettorName || loginId) : loginId;
-    const finalCid = (role === 'admin' || role === 'agent') ? cid : null;
+    const finalBettorName = (role === 'admin' || role === 'agent' || role === 'management') ? (bettorName || loginId) : loginId;
+    const finalCid = (role === 'admin' || role === 'agent' || role === 'management') ? cid : null;
+
+    const receiptId = Math.floor(100000 + Math.random() * 900000).toString();
 
     const { error: bidError } = await supabase.from('bids').insert([
       { 
@@ -323,16 +353,18 @@ export default function RacerProfile() {
         await supabase.from('audit_logs').insert([{
           user_id: userId,
           action: 'PLACE_BID',
-          details: `${loginId} placed an approved bet of $${amount} on ${racer.name} (ID: ${id})`
+          details: `${loginId} placed an approved bet of $${amount} on ${racer.name} (ID: ${id}) [Receipt: ${receiptId}]`
         }]);
-        showConfirm('Success', `Bid placed successfully!`, () => { window.location.reload(); });
+        
+        setBetReceipt({ id: receiptId, status: 'APPROVED', amount });
       } else {
         await supabase.from('audit_logs').insert([{
           user_id: userId,
           action: 'PENDING_BID',
-          details: `${loginId} submitted a pending bet of $${amount} on ${racer.name} (ID: ${id})`
+          details: `${loginId} submitted a pending bet of $${amount} on ${racer.name} (ID: ${id}) [Receipt: ${receiptId}]`
         }]);
-        showConfirm('Pending Approval', `Your bet of $${amount} has been submitted and is pending AGENT approval.`, () => { window.location.reload(); });
+        
+        setBetReceipt({ id: receiptId, status: 'PENDING', amount });
       }
     } else {
       console.error('Bet error:', bidError);
@@ -486,6 +518,22 @@ export default function RacerProfile() {
     }
   }
 
+  let teamAmountLeft: number | null = null;
+  if (isTeam) {
+    let totalAcq = 0;
+    if (racer.captain_name) {
+      const cap = individuals.find(d => d.name === racer.captain_name);
+      if (cap && cap.acquisition) totalAcq += cap.acquisition;
+    }
+    dynamicRoster.forEach(name => {
+      if (name) {
+        const ind = individuals.find(d => d.name === name);
+        if (ind && ind.acquisition) totalAcq += ind.acquisition;
+      }
+    });
+    teamAmountLeft = 1500000 - totalAcq;
+  }
+
   let activeMemberName = isTeam ? racer.captain_name || 'NO CAPTAIN' : racer.displayTeam || 'FREE AGENT';
   let activeMemberImage = racer.captain_image_url;
   let activeMemberCategory = isTeam ? 'FRANCHISE CAPTAIN' : 'CONTRACTED RACER';
@@ -544,7 +592,7 @@ export default function RacerProfile() {
           <Link href="#" className="text-mono" style={{ color: 'var(--text-muted)', textDecoration: 'none', fontSize: '0.85rem', letterSpacing: '1px' }}>RULES</Link>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
-          {(role === 'agent' || role === 'admin') && (
+          {(role === 'agent' || role === 'management' || role === 'admin') && (
             <Link href="/pending" className="text-mono" style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem', textDecoration: 'none', border: '1px solid var(--accent-primary)', color: 'var(--accent-primary)' }}>
               PENDING BETS
             </Link>
@@ -556,18 +604,13 @@ export default function RacerProfile() {
             title="Go to Profile"
           >
             <span style={{ fontSize: '0.85rem', color: '#fff', fontWeight: 'bold' }}>{(displayName || loginId).toUpperCase()}</span>
-            <span style={{ fontSize: '0.65rem', color: role === 'admin' ? '#ff2a2a' : role === 'agent' ? 'var(--accent-secondary)' : 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>
+            <span style={{ fontSize: '0.65rem', color: role === 'admin' ? '#ff2a2a' : (role === 'agent' || role === 'management') ? 'var(--accent-secondary)' : 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>
               OP: {role || 'UNKNOWN'}
             </span>
           </div>
           <button className="btn-secondary" onClick={() => router.push('/profile')} style={{ padding: '0.5rem 1rem', fontSize: '0.75rem', borderColor: 'var(--accent-primary)', color: '#fff' }}>
             PROFILE
           </button>
-          {role === 'admin' && (
-            <button className="btn-secondary" onClick={() => setIsEditing(true)} style={{ padding: '0.5rem 1rem', fontSize: '0.75rem', borderColor: '#ff2a2a', color: '#ff2a2a' }}>
-              EDIT ENTITY
-            </button>
-          )}
           <button className="btn-secondary" onClick={() => router.back()} style={{ padding: '0.5rem 1rem', fontSize: '0.75rem' }}>
             &lt; RETURN TO GRID
           </button>
@@ -613,6 +656,12 @@ export default function RacerProfile() {
                     TEAM: {racer.displayTeam}
                   </span>
                 )}
+
+                {role === 'admin' && (
+                  <button className="btn-secondary" onClick={() => setIsEditing(true)} style={{ padding: '0.5rem 1rem', fontSize: '0.75rem', borderColor: '#ff2a2a', color: '#ff2a2a', marginLeft: '0.5rem' }}>
+                    EDIT ENTITY
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -623,6 +672,14 @@ export default function RacerProfile() {
               <span className="text-mono" style={{ color: 'var(--accent-primary)', fontSize: '2rem' }}>$</span>
               <p className="bid-amount" style={{ fontSize: '4rem' }}>{racer.current_bid.toLocaleString()}</p>
             </div>
+            {teamAmountLeft !== null && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+                <span className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.8rem', letterSpacing: '1px' }}>AMOUNT LEFT</span>
+                <span className="text-mono" style={{ color: teamAmountLeft >= 0 ? '#00ff88' : '#ff2a2a', fontSize: '1.25rem', fontWeight: 700, padding: '0.2rem 0.6rem', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                  {teamAmountLeft < 0 ? '-' : ''}${Math.abs(teamAmountLeft).toLocaleString()}
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -631,17 +688,26 @@ export default function RacerProfile() {
           <div style={{ display: 'flex', gap: '2rem', flexDirection: 'column', marginBottom: '3rem' }}>
             
             {/* Captain Card (Now Landscape) */}
-            <div className="glass-panel animate-in" style={{ width: '100%', minHeight: '400px', padding: '0', display: 'flex', overflow: 'hidden', border: '1px solid var(--accent-primary)', position: 'relative' }}>
+            <div className="glass-panel animate-in" style={{ width: '100%', minHeight: '400px', padding: '0', display: 'flex', overflow: 'hidden', border: '1px solid var(--accent-primary)', position: 'relative', background: '#0a0a0a' }}>
               
-              {/* Full Background Image */}
-              <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 0, background: '#0a0a0a' }}>
+              {/* Left Side Image with Mask Fade */}
+              <div style={{ position: 'absolute', top: 0, left: 0, width: '60%', height: '100%', zIndex: 0, pointerEvents: 'none' }}>
                 {activeMemberImage ? (
-                  <img src={activeMemberImage} alt={activeMemberName} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center 20%' }} />
+                  <img 
+                    src={activeMemberImage} 
+                    alt={activeMemberName} 
+                    style={{ 
+                      width: '100%', 
+                      height: '100%', 
+                      objectFit: 'cover', 
+                      objectPosition: 'center 20%',
+                      maskImage: 'linear-gradient(to right, black 20%, transparent 100%)',
+                      WebkitMaskImage: 'linear-gradient(to right, black 20%, transparent 100%)'
+                    }} 
+                  />
                 ) : (
                   <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.1)' }}>NO IMAGE</div>
                 )}
-                {/* Smooth Gradient Overlay */}
-                <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', background: 'linear-gradient(to right, rgba(10,10,10,0) 0%, rgba(10,10,10,0) 30%, rgba(10,10,10,0.95) 55%, rgba(10,10,10,1) 70%)' }}></div>
               </div>
 
               {/* Info Container on the right */}
@@ -849,10 +915,11 @@ export default function RacerProfile() {
         {/* Telemetry & Financials Bento Grid */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '3rem', marginBottom: '4rem' }} className="animate-in stagger-1">
           
-          {/* Top Row: Performance Metrics */}
-          <div>
-            <h3 className="text-mono" style={{ color: 'var(--accent-primary)', marginBottom: '1rem', letterSpacing: '2px', fontSize: '0.85rem' }}>[ OVERALL TELEMETRY ]</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.5rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(600px, 1fr))', gap: '3rem' }}>
+            {/* Performance Metrics Left */}
+            <div>
+              <h3 className="text-mono" style={{ color: 'var(--accent-primary)', marginBottom: '1rem', letterSpacing: '2px', fontSize: '0.85rem' }}>[ OVERALL TELEMETRY ]</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.5rem' }}>
               {[
                 { label: 'RACES', value: racesDriven, accent: '#ffb300', icon: '🏁' },
                 { label: 'WINS', value: wins, accent: '#00e5ff', icon: '🏆' },
@@ -918,9 +985,10 @@ export default function RacerProfile() {
             </div>
           </div>
 
+          {/* Performance Metrics Right */}
           <div>
             <h3 className="text-mono" style={{ color: '#00ff88', marginBottom: '1rem', letterSpacing: '2px', fontSize: '0.85rem' }}>[ TOURNAMENT TELEMETRY ]</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.5rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.5rem' }}>
               {[
                 { label: 'T. RACES', value: tournamentRaces, accent: '#ffb300', icon: '🏁' },
                 { label: 'T. WINS', value: tournamentWins, accent: '#00e5ff', icon: '🏆' },
@@ -984,6 +1052,7 @@ export default function RacerProfile() {
                 </div>
               ))}
             </div>
+          </div>
           </div>
 
           {/* Bottom Row: Financial Metrics (Wider blocks) */}
@@ -1118,7 +1187,7 @@ export default function RacerProfile() {
                   <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)' }}>RACE</th>
                   <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)', textAlign: 'right' }}>AMOUNT</th>
                   <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)', textAlign: 'right' }}>PROFIT / LOSS</th>
-                  {(role === 'admin' || role === 'agent') && (
+                  {(role === 'admin' || role === 'agent' || role === 'management') && (
                     <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)', textAlign: 'right' }}>ACTION</th>
                   )}
                 </tr>
@@ -1152,7 +1221,7 @@ export default function RacerProfile() {
                         </td>
                       );
                     })()}
-                    {(role === 'admin' || role === 'agent') && (
+                    {(role === 'admin' || role === 'agent' || role === 'management') && (
                       <td style={{ padding: '1rem', textAlign: 'right' }}>
                         <button 
                           onClick={() => handleDeleteBet(bid.id, bid.amount)}
@@ -1264,27 +1333,7 @@ export default function RacerProfile() {
                     </div>
                   </div>
 
-                  <div style={{ padding: '1.5rem', border: '1px solid rgba(255,255,255,0.1)', marginTop: '1rem' }}>
-                    <h4 className="text-mono" style={{ color: '#00ff88', marginBottom: '1rem' }}>[ TOURNAMENT CONFIG ]</h4>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                      <div>
-                        <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '0.5rem', display: 'block' }}>T. RACES</label>
-                        <input type="number" className="input-base" value={editTournamentRaces} onChange={e => setEditTournamentRaces(Number(e.target.value))} style={{ width: '100%' }} />
-                      </div>
-                      <div>
-                        <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '0.5rem', display: 'block' }}>T. WINS</label>
-                        <input type="number" className="input-base" value={editTournamentWins} onChange={e => setEditTournamentWins(Number(e.target.value))} style={{ width: '100%' }} />
-                      </div>
-                      <div>
-                        <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '0.5rem', display: 'block' }}>T. WIN RATE (%)</label>
-                        <input type="number" step="0.1" className="input-base" value={editTournamentWinRate} onChange={e => setEditTournamentWinRate(Number(e.target.value))} style={{ width: '100%' }} />
-                      </div>
-                      <div>
-                        <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '0.5rem', display: 'block' }}>T. AVG POS</label>
-                        <input type="number" step="0.1" className="input-base" value={editTournamentAvgPos} onChange={e => setEditTournamentAvgPos(Number(e.target.value))} style={{ width: '100%' }} />
-                      </div>
-                    </div>
-                  </div>
+                  {/* TOURNAMENT CONFIG HAS BEEN REMOVED (DYNAMICALLY SYNCED WITH RESULTS) */}
                 </div>
 
                 {/* Column 2: Roster (Only if Team) */}
@@ -1380,7 +1429,7 @@ export default function RacerProfile() {
                 </select>
               </div>
 
-              {(role === 'admin' || role === 'agent') && (
+              {(role === 'admin' || role === 'agent' || role === 'management') && (
                 <>
                   <div>
                     <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem' }}>BETTOR NAME</label>
@@ -1425,6 +1474,110 @@ export default function RacerProfile() {
                 <button type="submit" className="btn-primary">CONFIRM BET</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* BET RECEIPT MODAL */}
+      {betReceipt && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.9)',
+          backdropFilter: 'blur(10px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+          pointerEvents: 'auto'
+        }}>
+          <div className="glass-panel animate-in" style={{ 
+            padding: '3rem', 
+            display: 'flex', 
+            flexDirection: 'column', 
+            alignItems: 'center',
+            gap: '1.5rem',
+            minWidth: '450px',
+            border: '1px solid var(--accent-primary)',
+            boxShadow: '0 20px 50px rgba(242, 24, 24, 0.3)',
+            background: 'linear-gradient(145deg, rgba(20,20,20,0.95) 0%, rgba(10,10,10,0.95) 100%)'
+          }}>
+            <div style={{ 
+              width: '64px', height: '64px', 
+              borderRadius: '50%', 
+              background: betReceipt.status === 'APPROVED' ? 'rgba(0,255,136,0.1)' : 'rgba(255,170,0,0.1)', 
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              border: `2px solid ${betReceipt.status === 'APPROVED' ? '#00ff88' : '#ffaa00'}`
+            }}>
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke={betReceipt.status === 'APPROVED' ? '#00ff88' : '#ffaa00'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                {betReceipt.status === 'APPROVED' ? <polyline points="20 6 9 17 4 12" /> : <circle cx="12" cy="12" r="10" />}
+                {betReceipt.status !== 'APPROVED' && <polyline points="12 6 12 12 16 14" />}
+              </svg>
+            </div>
+
+            <h3 className="title-gradient" style={{ fontSize: '2.5rem', textTransform: 'uppercase', textAlign: 'center', margin: 0 }}>
+              {betReceipt.status === 'APPROVED' ? 'BET CONFIRMED' : 'BET PENDING'}
+            </h3>
+            
+            <div style={{ textAlign: 'center' }}>
+              <p className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '1rem', margin: '0 0 0.5rem 0' }}>
+                You placed a bet of <strong style={{ color: '#00ff88' }}>${betReceipt.amount.toLocaleString()}</strong>
+              </p>
+              <p className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: 0 }}>
+                {betReceipt.status === 'APPROVED' ? 'Your bet has been logged successfully.' : 'Waiting for management approval.'}
+              </p>
+            </div>
+
+            <div style={{ 
+              background: 'rgba(0,0,0,0.5)', 
+              border: '1px dashed rgba(255,255,255,0.2)', 
+              padding: '1.5rem', 
+              borderRadius: '8px',
+              width: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '0.5rem'
+            }}>
+              <span className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', letterSpacing: '2px' }}>TICKET ID</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <span style={{ fontSize: '3rem', fontWeight: 900, fontFamily: 'monospace', color: '#fff', letterSpacing: '8px' }}>
+                  {betReceipt.id}
+                </span>
+                <button 
+                  onClick={() => {
+                    navigator.clipboard.writeText(betReceipt.id);
+                  }}
+                  title="Copy Ticket ID"
+                  style={{
+                    background: 'rgba(255,255,255,0.1)',
+                    border: 'none',
+                    borderRadius: '4px',
+                    padding: '0.5rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'all 0.2s ease'
+                  }}
+                  onMouseOver={e => e.currentTarget.style.background = 'rgba(255,255,255,0.2)'}
+                  onMouseOut={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+                >
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <button 
+              className="btn-primary" 
+              style={{ width: '100%', padding: '1.25rem', fontSize: '1.2rem', marginTop: '1rem' }}
+              onClick={() => window.location.reload()}
+            >
+              DONE
+            </button>
           </div>
         </div>
       )}

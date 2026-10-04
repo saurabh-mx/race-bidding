@@ -41,6 +41,7 @@ type BetDetail = {
   bettor_name?: string;
   cid?: string;
   round_id?: number;
+  position_prediction?: string;
 };
 
 export default function AGENTPanel() {
@@ -80,7 +81,7 @@ export default function AGENTPanel() {
         setDisplayName(profile.display_name || '');
       }
 
-      if (profile?.role !== 'admin' && profile?.role !== 'agent') {
+      if (profile?.role !== 'admin' && profile?.role !== 'agent' && profile?.role !== 'management') {
         router.replace('/dashboard');
         return;
       }
@@ -134,7 +135,8 @@ export default function AGENTPanel() {
           created_at: b.created_at,
           bidder_name: b.profiles?.display_name || b.bidder_name || b.profiles?.login_id || 'UNKNOWN',
           bettor_name: b.bettor_name,
-          cid: b.cid
+          cid: b.cid,
+          position_prediction: b.position_prediction
         }))
       );
     }
@@ -184,7 +186,8 @@ export default function AGENTPanel() {
         bidder_name: b.profiles?.display_name || b.profiles?.login_id || b.bidder_name || 'UNKNOWN',
         bettor_name: b.bettor_name,
         cid: b.cid,
-        round_id: b.round_id
+        round_id: b.round_id,
+        position_prediction: b.position_prediction
       }));
       
       const uniqueRounds = new Set(userBids.map((b: any) => b.round_id));
@@ -240,7 +243,8 @@ export default function AGENTPanel() {
         created_at: b.created_at,
         bidder_name: b.profiles?.display_name || b.bidder_name || b.profiles?.login_id || 'UNKNOWN',
         bettor_name: b.bettor_name,
-        cid: b.cid
+        cid: b.cid,
+        position_prediction: b.position_prediction
       }));
 
       const raceMeta = raceDetailsMap.get(roundId);
@@ -272,10 +276,10 @@ export default function AGENTPanel() {
     }
   }, [searchQuery, users]);
 
-  if (isLoading || (role !== 'admin' && role !== 'agent')) return (
+  if (isLoading || (role !== 'admin' && role !== 'agent' && role !== 'management')) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <p className="text-mono animate-in" style={{ color: 'var(--accent-primary)', fontSize: '1.2rem', letterSpacing: '4px' }}>
-        LOADING AGENT PANEL...
+        LOADING MANAGEMENT PANEL...
       </p>
     </div>
   );
@@ -291,7 +295,7 @@ export default function AGENTPanel() {
         <Link href="/dashboard" style={{ textDecoration: 'none' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
             <img src="/logo.png" alt="Race Betting" style={{ height: '50px', width: 'auto', borderRadius: '50%' }} />
-            <h1 className="title-gradient" style={{ fontSize: '1.5rem', color: '#f21818' }}>RACEBET. <span style={{ color: '#fff', fontSize: '1rem' }}>// AGENT</span></h1>
+            <h1 className="title-gradient" style={{ fontSize: '1.5rem', color: '#f21818' }}>RACEBET. <span style={{ color: '#fff', fontSize: '1rem' }}>// MANAGEMENT</span></h1>
           </div>
         </Link>
         <div style={{ display: 'flex', gap: '2rem', flex: 1, justifyContent: 'center' }}>
@@ -324,7 +328,7 @@ export default function AGENTPanel() {
 
       <div style={{ flex: 1, padding: '2rem', maxWidth: '1400px', margin: '0 auto', width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-          <h2 className="title-gradient" style={{ fontSize: '2rem' }}>AGENT</h2>
+          <h2 className="title-gradient" style={{ fontSize: '2rem' }}>MANAGEMENT</h2>
           <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
             <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', padding: '0.25rem' }}>
               <button 
@@ -429,7 +433,7 @@ export default function AGENTPanel() {
                 <p className="text-mono" style={{ 
                   textAlign: 'right', 
                   fontSize: '0.75rem', 
-                  color: user.role === 'admin' ? '#ff2a2a' : user.role === 'agent' ? '#ffaa00' : 'var(--text-muted)',
+                  color: user.role === 'admin' ? '#ff2a2a' : (user.role === 'agent' || user.role === 'management') ? '#ffaa00' : 'var(--text-muted)',
                   fontWeight: 700,
                   textTransform: 'uppercase'
                 }}>{user.role}</p>
@@ -466,7 +470,7 @@ export default function AGENTPanel() {
 
                   <div className="text-mono" style={{ 
                     display: 'grid', 
-                    gridTemplateColumns: '1.25fr 1fr 0.5fr 0.75fr 1.25fr 0.75fr 0.75fr 0.75fr 0.75fr 0.75fr', 
+                    gridTemplateColumns: '1.25fr 1fr 0.5fr 0.75fr 1.25fr 0.5fr 0.75fr 0.75fr 0.75fr 0.75fr 0.75fr', 
                     padding: '0.75rem 1rem',
                     fontSize: '0.65rem',
                     color: 'var(--text-muted)',
@@ -475,10 +479,11 @@ export default function AGENTPanel() {
                     marginBottom: '0.5rem'
                   }}>
                     <span>DATE</span>
-                    <span>AGENT</span>
+                    <span>MANAGEMENT</span>
                     <span>ROUND</span>
                     <span>CID</span>
                     <span>BET ON</span>
+                    <span>POS</span>
                     <span>TYPE</span>
                     <span style={{ textAlign: 'right' }}>AMOUNT</span>
                     <span style={{ textAlign: 'right' }}>PAYOUT</span>
@@ -495,7 +500,7 @@ export default function AGENTPanel() {
                           key={bet.id}
                           style={{ 
                             display: 'grid', 
-                            gridTemplateColumns: '1.25fr 1fr 0.5fr 0.75fr 1.25fr 0.75fr 0.75fr 0.75fr 0.75fr 0.75fr', 
+                            gridTemplateColumns: '1.25fr 1fr 0.5fr 0.75fr 1.25fr 0.5fr 0.75fr 0.75fr 0.75fr 0.75fr 0.75fr', 
                             padding: '0.75rem 1rem',
                             background: bet.result === 'WON' ? 'rgba(0, 255, 136, 0.05)' : bet.result === 'LOST' ? 'rgba(255, 68, 68, 0.05)' : 'rgba(255,255,255,0.02)',
                             borderLeft: bet.result === 'WON' ? '3px solid #00ff88' : bet.result === 'LOST' ? '3px solid #ff4444' : '3px solid #555',
@@ -509,6 +514,7 @@ export default function AGENTPanel() {
                           <p className="text-mono" style={{ color: '#fff', fontSize: '0.85rem' }}>{bet.round_id ? `${bet.round_id}` : '—'}</p>
                           <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{bet.cid?.toUpperCase() || '—'}</p>
                           <span style={{ fontSize: '0.9rem', fontWeight: 'bold', color: '#fff' }}>{bet.racer_name}</span>
+                          <span className="text-mono" style={{ fontSize: '0.85rem', color: '#ffaa00' }}>{bet.position_prediction || '—'}</span>
                           <span className="text-mono" style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>{bet.racer_type}</span>
                           <span className="text-mono" style={{ textAlign: 'right', fontSize: '0.95rem', color: '#fff', fontWeight: 'bold' }}>
                             ${bet.amount.toLocaleString()}
@@ -620,7 +626,7 @@ export default function AGENTPanel() {
 
                     <div className="text-mono" style={{ 
                       display: 'grid', 
-                      gridTemplateColumns: '1fr 1fr 0.75fr 1.25fr 1fr 0.75fr 0.75fr 0.75fr 0.75fr', 
+                      gridTemplateColumns: '1fr 1fr 0.75fr 1.25fr 0.5fr 1fr 0.75fr 0.75fr 0.75fr 0.75fr', 
                       padding: '0.75rem 1rem',
                       fontSize: '0.65rem',
                       color: 'var(--text-muted)',
@@ -628,10 +634,11 @@ export default function AGENTPanel() {
                       borderBottom: '1px solid rgba(255,255,255,0.1)',
                       marginBottom: '0.5rem'
                     }}>
-                      <span>AGENT</span>
+                      <span>MANAGEMENT</span>
                       <span>BETTOR NAME</span>
                       <span>CID</span>
                       <span>BET ON</span>
+                      <span>POS</span>
                       <span>TYPE</span>
                       <span style={{ textAlign: 'right' }}>AMOUNT</span>
                       <span style={{ textAlign: 'right' }}>PAYOUT</span>
@@ -654,7 +661,7 @@ export default function AGENTPanel() {
                             key={bet.id}
                             style={{ 
                               display: 'grid', 
-                              gridTemplateColumns: '1fr 1fr 0.75fr 1.25fr 1fr 0.75fr 0.75fr 0.75fr 0.75fr', 
+                              gridTemplateColumns: '1fr 1fr 0.75fr 1.25fr 0.5fr 1fr 0.75fr 0.75fr 0.75fr 0.75fr', 
                               padding: '0.75rem 1rem',
                               background: 'rgba(255,255,255,0.02)',
                               alignItems: 'center'
@@ -664,6 +671,7 @@ export default function AGENTPanel() {
                             <p style={{ color: '#fff', fontSize: '0.85rem' }}>{bet.bettor_name?.toUpperCase() || '—'}</p>
                             <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{bet.cid?.toUpperCase() || '—'}</p>
                             <span style={{ fontSize: '0.9rem', fontWeight: 'bold', color: '#fff' }}>{bet.racer_name}</span>
+                            <span className="text-mono" style={{ fontSize: '0.85rem', color: '#ffaa00' }}>{bet.position_prediction || '—'}</span>
                             <span className="text-mono" style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>{bet.racer_type}</span>
                             <span className="text-mono" style={{ textAlign: 'right', fontSize: '0.95rem', color: '#fff', fontWeight: 'bold' }}>
                               ${bet.amount.toLocaleString()}
@@ -713,7 +721,7 @@ export default function AGENTPanel() {
 
           <div className="text-mono" style={{ 
             display: 'grid', 
-            gridTemplateColumns: '1fr 1fr 0.75fr 1.25fr 1fr 0.75fr 0.75fr 0.75fr 0.75fr', 
+            gridTemplateColumns: '1fr 1fr 0.75fr 1.25fr 0.5fr 1fr 0.75fr 0.75fr 0.75fr 0.75fr', 
             padding: '0.75rem 1rem',
             fontSize: '0.65rem',
             color: 'var(--text-muted)',
@@ -721,10 +729,11 @@ export default function AGENTPanel() {
             borderBottom: '1px solid rgba(255,255,255,0.1)',
             marginBottom: '0.5rem'
           }}>
-            <span>AGENT</span>
+            <span>MANAGEMENT</span>
             <span>BETTOR NAME</span>
             <span>CID</span>
             <span>BET ON</span>
+            <span>POS</span>
             <span>TYPE</span>
             <span style={{ textAlign: 'right' }}>AMOUNT</span>
             <span style={{ textAlign: 'right' }}>PAYOUT</span>
@@ -746,7 +755,7 @@ export default function AGENTPanel() {
                     key={bet.id}
                     style={{ 
                       display: 'grid', 
-                      gridTemplateColumns: '1fr 1fr 0.75fr 1.25fr 1fr 0.75fr 0.75fr 0.75fr 0.75fr', 
+                      gridTemplateColumns: '1fr 1fr 0.75fr 1.25fr 0.5fr 1fr 0.75fr 0.75fr 0.75fr 0.75fr', 
                       padding: '0.75rem 1rem',
                       background: 'rgba(255,255,255,0.02)',
                       alignItems: 'center',
@@ -757,6 +766,7 @@ export default function AGENTPanel() {
                     <p style={{ color: '#fff', fontSize: '0.85rem' }}>{bet.bettor_name?.toUpperCase() || '—'}</p>
                     <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{bet.cid?.toUpperCase() || '—'}</p>
                     <p style={{ color: '#fff', fontSize: '0.85rem', fontWeight: 'bold' }}>{bet.racer_name}</p>
+                    <span className="text-mono" style={{ fontSize: '0.85rem', color: '#ffaa00' }}>{bet.position_prediction || '—'}</span>
                     <p className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>{bet.racer_type}</p>
                     <p className="text-mono" style={{ textAlign: 'right', color: '#fff', fontSize: '0.85rem' }}>${bet.amount.toLocaleString()}</p>
                     <p className="text-mono" style={{ textAlign: 'right', color: bet.result === 'WON' ? '#00ff88' : 'var(--text-muted)', fontSize: '0.85rem' }}>

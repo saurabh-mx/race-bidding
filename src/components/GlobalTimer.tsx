@@ -16,6 +16,7 @@ export function GlobalTimer() {
   const [role, setRole] = useState<string | null>(null);
   const [customTime, setCustomTime] = useState<string>('');
   const [showWinnerPanel, setShowWinnerPanel] = useState(false);
+  const [isAnnouncing, setIsAnnouncing] = useState(false);
   const [winnerInput, setWinnerInput] = useState('');
   const [racerPositions, setRacerPositions] = useState<Record<string, string>>({});
   const [winnerType, setWinnerType] = useState<'TEAM' | 'RACER' | 'MONTHLY'>('TEAM');
@@ -139,6 +140,8 @@ export function GlobalTimer() {
   };
   
   const handleAnnounceWinner = async () => {
+    if (isAnnouncing) return;
+    setIsAnnouncing(true);
     let finalPositions = { ...racerPositions };
 
     if (winnerType === 'TEAM') {
@@ -162,6 +165,25 @@ export function GlobalTimer() {
     } else {
       if (Object.keys(finalPositions).length === 0) {
         showError('Validation Error', 'No positions selected. Please assign at least one position.');
+        setIsAnnouncing(false);
+        return;
+      }
+
+      // Ensure all posted racers have a position assigned
+      let postedFilter: any;
+      let postedRacers: any[] = [];
+      if (winnerType === 'MONTHLY') {
+        const { data } = await supabase.from('racers').select('id').in('type', ['MONTHLY_RACER']).eq('is_posted', true);
+        postedRacers = data || [];
+      } else {
+        const { data } = await supabase.from('racers').select('id, type').eq('is_posted', true);
+        postedRacers = (data || []).filter((r: any) => r.type !== 'TEAM' && !r.type?.startsWith('MONTHLY'));
+      }
+      
+      const missingPositions = postedRacers.some(r => !finalPositions[r.id]);
+      if (missingPositions) {
+        showError('Validation Error', 'Please assign a position (or DNF/DSQ) for EVERY participant before confirming.');
+        setIsAnnouncing(false);
         return;
       }
     }
@@ -169,14 +191,17 @@ export function GlobalTimer() {
     // Prevent announcement if timer is active
     if (winnerType === 'TEAM' && teamTimeLeft > 0) {
       showError('Timer Active', 'Cannot announce team winner while TEAM WINDOW is still open!');
+      setIsAnnouncing(false);
       return;
     }
     if (winnerType === 'MONTHLY' && monthlyTimeLeft > 0) {
       showError('Timer Active', 'Cannot announce monthly winner while MONTHLY WINDOW is still open!');
+      setIsAnnouncing(false);
       return;
     }
     if (winnerType === 'RACER' && indTimeLeft > 0) {
       showError('Timer Active', 'Cannot announce racer winner while RACER WINDOW is still open!');
+      setIsAnnouncing(false);
       return;
     }
 
@@ -402,9 +427,11 @@ export function GlobalTimer() {
     setShowWinnerPanel(false);
     setWinnerInput('');
     setRacerPositions({});
+    setIsAnnouncing(false);
     showSuccess('Success', 'Positions logged successfully!');
     } catch (err: any) {
       console.error(err);
+      setIsAnnouncing(false);
       showError('Fatal Error', err.message);
     }
   };
@@ -582,119 +609,132 @@ export function GlobalTimer() {
     <>
       <div style={{
         position: 'fixed',
-        left: '2rem',
-        top: '120px',
-        zIndex: 50,
+        bottom: 0,
+        left: 0,
+        right: 0,
+        zIndex: 100,
         display: 'flex',
-        flexDirection: 'column',
-        gap: '1rem',
+        flexDirection: 'row',
+        gap: '2rem',
+        justifyContent: 'center',
+        alignItems: 'flex-end',
+        background: 'rgba(0,0,0,0.8)',
+        backdropFilter: 'blur(10px)',
+        borderTop: '1px solid rgba(255,255,255,0.1)',
+        padding: '1rem 2rem',
         pointerEvents: 'none',
-        maxHeight: 'calc(100vh - 140px)',
-        overflowY: 'auto',
-        paddingBottom: '1rem'
       }}>
         {/* TEAM TIMER */}
-        <div style={{ pointerEvents: 'auto', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        <div style={{ pointerEvents: 'auto', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem' }}>
           <div className={`glass-panel timer-panel ${teamTimeLeft > 0 ? 'timer-active-red' : 'timer-closed'}`} style={{ 
-            padding: '1.5rem', 
-            textAlign: 'center',
+            padding: '0.5rem 1rem', 
+            textAlign: 'left',
             minWidth: '180px',
-            zIndex: 10
+            zIndex: 10,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between'
           }}>
-            <p className="text-mono" style={{ color: teamTimeLeft > 0 ? 'var(--accent-primary)' : 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '0.5rem', letterSpacing: '2px' }}>
-              TEAM WINDOW
+            <p className="text-mono" style={{ color: teamTimeLeft > 0 ? 'var(--accent-primary)' : 'var(--text-muted)', fontSize: '0.65rem', letterSpacing: '1px', margin: 0, lineHeight: 1.2 }}>
+              TEAM<br/>WINDOW
             </p>
-            <p style={{ fontSize: '2rem', fontWeight: 900, color: teamTimeLeft > 0 ? '#fff' : '#666', fontFamily: 'monospace' }}>
+            <p style={{ fontSize: '1.25rem', fontWeight: 900, color: teamTimeLeft > 0 ? '#fff' : '#666', fontFamily: 'monospace', margin: 0 }}>
               {teamTimeLeft > 0 ? formatTime(teamTimeLeft) : 'CLOSED'}
             </p>
           </div>
 
-          {(role === 'admin' || role === 'agent') && (
-            <div className="glass-panel animate-drop" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '-0.25rem', zIndex: 0 }}>
+          {(role === 'admin' || role === 'management') && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
               <div style={{ display: 'flex', gap: '0.25rem' }}>
-                <button onClick={() => handleSetTimer(5, 'TEAM')} className="btn-secondary" style={{ flex: 1, padding: '0.25rem', fontSize: '0.65rem' }}>+5M</button>
-                <button onClick={() => handleSetTimer(60, 'TEAM')} className="btn-secondary" style={{ flex: 1, padding: '0.25rem', fontSize: '0.65rem' }}>+1H</button>
-                <button onClick={() => handleStopTimer('TEAM')} className="btn-primary" style={{ flex: 1, padding: '0.25rem', fontSize: '0.65rem' }}>STOP</button>
+                <button onClick={() => handleSetTimer(5, 'TEAM')} className="btn-secondary" style={{ width: '38px', padding: '0.25rem 0', fontSize: '0.65rem' }}>+5M</button>
+                <button onClick={() => handleSetTimer(60, 'TEAM')} className="btn-secondary" style={{ width: '38px', padding: '0.25rem 0', fontSize: '0.65rem' }}>+1H</button>
+                <button onClick={() => handleStopTimer('TEAM')} className="btn-primary" style={{ width: '38px', padding: '0.25rem 0', fontSize: '0.65rem' }}>STOP</button>
               </div>
               <div style={{ display: 'flex', gap: '0.25rem' }}>
-                <input type="number" placeholder="Mins" className="input-base" style={{ width: '50px', padding: '0.25rem', fontSize: '0.65rem' }} value={customTime} onChange={e => setCustomTime(e.target.value)} />
-                <button onClick={() => { if(customTime) { handleSetTimer(-Number(customTime), 'TEAM'); setCustomTime(''); } }} className="btn-secondary" style={{ flex: 1, padding: '0.25rem', fontSize: '0.65rem', border: '1px solid #ff4444', color: '#ff4444' }}>-CUST</button>
-                <button onClick={() => { if(customTime) { handleSetTimer(Number(customTime), 'TEAM'); setCustomTime(''); } }} className="btn-secondary" style={{ flex: 1, padding: '0.25rem', fontSize: '0.65rem' }}>+CUST</button>
+                <input type="number" placeholder="M" className="input-base" style={{ width: '38px', padding: '0.25rem 0', fontSize: '0.65rem', textAlign: 'center' }} value={customTime} onChange={e => setCustomTime(e.target.value)} />
+                <button onClick={() => { if(customTime) { handleSetTimer(-Number(customTime), 'TEAM'); setCustomTime(''); } }} className="btn-secondary" style={{ width: '38px', padding: '0.25rem 0', fontSize: '0.65rem', border: '1px solid #ff4444', color: '#ff4444' }}>-C</button>
+                <button onClick={() => { if(customTime) { handleSetTimer(Number(customTime), 'TEAM'); setCustomTime(''); } }} className="btn-secondary" style={{ width: '38px', padding: '0.25rem 0', fontSize: '0.65rem' }}>+C</button>
               </div>
             </div>
           )}
         </div>
 
         {/* INDIVIDUAL TIMER */}
-        <div style={{ pointerEvents: 'auto', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        <div style={{ pointerEvents: 'auto', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem' }}>
           <div className={`glass-panel timer-panel ${indTimeLeft > 0 ? 'timer-active-green' : 'timer-closed'}`} style={{ 
-            padding: '1.5rem', 
-            textAlign: 'center',
+            padding: '0.5rem 1rem', 
+            textAlign: 'left',
             minWidth: '180px',
-            zIndex: 10
+            zIndex: 10,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between'
           }}>
-            <p className="text-mono" style={{ color: indTimeLeft > 0 ? '#00ff88' : 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '0.5rem', letterSpacing: '2px' }}>
-              RACER WINDOW
+            <p className="text-mono" style={{ color: indTimeLeft > 0 ? '#00ff88' : 'var(--text-muted)', fontSize: '0.65rem', letterSpacing: '1px', margin: 0, lineHeight: 1.2 }}>
+              RACER<br/>WINDOW
             </p>
-            <p style={{ fontSize: '2rem', fontWeight: 900, color: indTimeLeft > 0 ? '#fff' : '#666', fontFamily: 'monospace' }}>
+            <p style={{ fontSize: '1.25rem', fontWeight: 900, color: indTimeLeft > 0 ? '#fff' : '#666', fontFamily: 'monospace', margin: 0 }}>
               {indTimeLeft > 0 ? formatTime(indTimeLeft) : 'CLOSED'}
             </p>
           </div>
 
-          {(role === 'admin' || role === 'agent') && (
-            <div className="glass-panel animate-drop" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '-0.25rem', zIndex: 0 }}>
+          {(role === 'admin' || role === 'management') && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
               <div style={{ display: 'flex', gap: '0.25rem' }}>
-                <button onClick={() => handleSetTimer(5, 'INDIVIDUAL')} className="btn-secondary" style={{ flex: 1, padding: '0.25rem', fontSize: '0.65rem' }}>+5M</button>
-                <button onClick={() => handleSetTimer(60, 'INDIVIDUAL')} className="btn-secondary" style={{ flex: 1, padding: '0.25rem', fontSize: '0.65rem' }}>+1H</button>
-                <button onClick={() => handleStopTimer('INDIVIDUAL')} className="btn-primary" style={{ flex: 1, padding: '0.25rem', fontSize: '0.65rem' }}>STOP</button>
+                <button onClick={() => handleSetTimer(5, 'INDIVIDUAL')} className="btn-secondary" style={{ width: '38px', padding: '0.25rem 0', fontSize: '0.65rem' }}>+5M</button>
+                <button onClick={() => handleSetTimer(60, 'INDIVIDUAL')} className="btn-secondary" style={{ width: '38px', padding: '0.25rem 0', fontSize: '0.65rem' }}>+1H</button>
+                <button onClick={() => handleStopTimer('INDIVIDUAL')} className="btn-primary" style={{ width: '38px', padding: '0.25rem 0', fontSize: '0.65rem' }}>STOP</button>
               </div>
               <div style={{ display: 'flex', gap: '0.25rem' }}>
-                <input type="number" placeholder="Mins" className="input-base" style={{ width: '50px', padding: '0.25rem', fontSize: '0.65rem' }} value={customTime} onChange={e => setCustomTime(e.target.value)} />
-                <button onClick={() => { if(customTime) { handleSetTimer(-Number(customTime), 'INDIVIDUAL'); setCustomTime(''); } }} className="btn-secondary" style={{ flex: 1, padding: '0.25rem', fontSize: '0.65rem', border: '1px solid #ff4444', color: '#ff4444' }}>-CUST</button>
-                <button onClick={() => { if(customTime) { handleSetTimer(Number(customTime), 'INDIVIDUAL'); setCustomTime(''); } }} className="btn-secondary" style={{ flex: 1, padding: '0.25rem', fontSize: '0.65rem' }}>+CUST</button>
+                <input type="number" placeholder="M" className="input-base" style={{ width: '38px', padding: '0.25rem 0', fontSize: '0.65rem', textAlign: 'center' }} value={customTime} onChange={e => setCustomTime(e.target.value)} />
+                <button onClick={() => { if(customTime) { handleSetTimer(-Number(customTime), 'INDIVIDUAL'); setCustomTime(''); } }} className="btn-secondary" style={{ width: '38px', padding: '0.25rem 0', fontSize: '0.65rem', border: '1px solid #ff4444', color: '#ff4444' }}>-C</button>
+                <button onClick={() => { if(customTime) { handleSetTimer(Number(customTime), 'INDIVIDUAL'); setCustomTime(''); } }} className="btn-secondary" style={{ width: '38px', padding: '0.25rem 0', fontSize: '0.65rem' }}>+C</button>
               </div>
             </div>
           )}
         </div>
 
         {/* MONTHLY TIMER */}
-        <div style={{ pointerEvents: 'auto', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        <div style={{ pointerEvents: 'auto', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem' }}>
           <div className={`glass-panel timer-panel ${monthlyTimeLeft > 0 ? 'timer-active-blue' : 'timer-closed'}`} style={{ 
-            padding: '1.5rem', 
-            textAlign: 'center',
+            padding: '0.5rem 1rem', 
+            textAlign: 'left',
             minWidth: '180px',
-            zIndex: 10
+            zIndex: 10,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between'
           }}>
-            <p className="text-mono" style={{ color: monthlyTimeLeft > 0 ? '#ff00ff' : 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '0.5rem', letterSpacing: '2px' }}>
-              MONTHLY WINDOW
+            <p className="text-mono" style={{ color: monthlyTimeLeft > 0 ? '#ff00ff' : 'var(--text-muted)', fontSize: '0.65rem', letterSpacing: '1px', margin: 0, lineHeight: 1.2 }}>
+              MONTHLY<br/>WINDOW
             </p>
-            <p style={{ fontSize: '2rem', fontWeight: 900, color: monthlyTimeLeft > 0 ? '#fff' : '#666', fontFamily: 'monospace' }}>
+            <p style={{ fontSize: '1.25rem', fontWeight: 900, color: monthlyTimeLeft > 0 ? '#fff' : '#666', fontFamily: 'monospace', margin: 0 }}>
               {monthlyTimeLeft > 0 ? formatTime(monthlyTimeLeft) : 'CLOSED'}
             </p>
           </div>
 
-          {(role === 'admin' || role === 'agent') && (
-            <div className="glass-panel animate-drop" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '-0.25rem', zIndex: 0 }}>
+          {(role === 'admin' || role === 'management') && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
               <div style={{ display: 'flex', gap: '0.25rem' }}>
-                <button onClick={() => handleSetTimer(5, 'MONTHLY')} className="btn-secondary" style={{ flex: 1, padding: '0.25rem', fontSize: '0.65rem' }}>+5M</button>
-                <button onClick={() => handleSetTimer(60, 'MONTHLY')} className="btn-secondary" style={{ flex: 1, padding: '0.25rem', fontSize: '0.65rem' }}>+1H</button>
-                <button onClick={() => handleStopTimer('MONTHLY')} className="btn-primary" style={{ flex: 1, padding: '0.25rem', fontSize: '0.65rem' }}>STOP</button>
+                <button onClick={() => handleSetTimer(5, 'MONTHLY')} className="btn-secondary" style={{ width: '38px', padding: '0.25rem 0', fontSize: '0.65rem' }}>+5M</button>
+                <button onClick={() => handleSetTimer(60, 'MONTHLY')} className="btn-secondary" style={{ width: '38px', padding: '0.25rem 0', fontSize: '0.65rem' }}>+1H</button>
+                <button onClick={() => handleStopTimer('MONTHLY')} className="btn-primary" style={{ width: '38px', padding: '0.25rem 0', fontSize: '0.65rem' }}>STOP</button>
               </div>
               <div style={{ display: 'flex', gap: '0.25rem' }}>
-                <input type="number" placeholder="Mins" className="input-base" style={{ width: '50px', padding: '0.25rem', fontSize: '0.65rem' }} value={customTime} onChange={e => setCustomTime(e.target.value)} />
-                <button onClick={() => { if(customTime) { handleSetTimer(-Number(customTime), 'MONTHLY'); setCustomTime(''); } }} className="btn-secondary" style={{ flex: 1, padding: '0.25rem', fontSize: '0.65rem', border: '1px solid #ff4444', color: '#ff4444' }}>-CUST</button>
-                <button onClick={() => { if(customTime) { handleSetTimer(Number(customTime), 'MONTHLY'); setCustomTime(''); } }} className="btn-secondary" style={{ flex: 1, padding: '0.25rem', fontSize: '0.65rem' }}>+CUST</button>
+                <input type="number" placeholder="M" className="input-base" style={{ width: '38px', padding: '0.25rem 0', fontSize: '0.65rem', textAlign: 'center' }} value={customTime} onChange={e => setCustomTime(e.target.value)} />
+                <button onClick={() => { if(customTime) { handleSetTimer(-Number(customTime), 'MONTHLY'); setCustomTime(''); } }} className="btn-secondary" style={{ width: '38px', padding: '0.25rem 0', fontSize: '0.65rem', border: '1px solid #ff4444', color: '#ff4444' }}>-C</button>
+                <button onClick={() => { if(customTime) { handleSetTimer(Number(customTime), 'MONTHLY'); setCustomTime(''); } }} className="btn-secondary" style={{ width: '38px', padding: '0.25rem 0', fontSize: '0.65rem' }}>+C</button>
               </div>
             </div>
           )}
         </div>
 
         {/* HOST RACE BET BUTTON */}
-        {(role === 'admin' || role === 'agent') && (
-          <div style={{ pointerEvents: 'auto', marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        {(role === 'admin' || role === 'management') && (
+          <div style={{ pointerEvents: 'auto', display: 'flex', alignItems: 'center' }}>
             <button 
               className="btn-primary" 
-              style={{ width: '100%', padding: '1rem', fontSize: '0.85rem' }}
+              style={{ height: '62px', padding: '0 1.5rem', fontSize: '0.85rem' }}
               onClick={() => setShowHostPanel(true)}
             >
               HOST RACE BET
@@ -816,10 +856,10 @@ export function GlobalTimer() {
               <button 
                 onClick={handleAnnounceWinner} 
                 className="btn-primary" 
-                style={{ flex: 1, padding: '1rem', fontSize: '1rem', opacity: ((winnerType === 'TEAM' && teamTimeLeft > 0) || (winnerType === 'RACER' && indTimeLeft > 0) || (winnerType === 'MONTHLY' && monthlyTimeLeft > 0)) ? 0.5 : 1 }}
-                disabled={(winnerType === 'TEAM' && teamTimeLeft > 0) || (winnerType === 'RACER' && indTimeLeft > 0) || (winnerType === 'MONTHLY' && monthlyTimeLeft > 0)}
+                style={{ flex: 1, padding: '1rem', fontSize: '1rem', opacity: (isAnnouncing || (winnerType === 'TEAM' && teamTimeLeft > 0) || (winnerType === 'RACER' && indTimeLeft > 0) || (winnerType === 'MONTHLY' && monthlyTimeLeft > 0)) ? 0.5 : 1 }}
+                disabled={isAnnouncing || (winnerType === 'TEAM' && teamTimeLeft > 0) || (winnerType === 'RACER' && indTimeLeft > 0) || (winnerType === 'MONTHLY' && monthlyTimeLeft > 0)}
               >
-                CONFIRM
+                {isAnnouncing ? 'LOGGING...' : 'CONFIRM'}
               </button>
             </div>
           </div>

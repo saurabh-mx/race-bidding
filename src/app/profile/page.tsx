@@ -126,7 +126,7 @@ export default function UserProfile() {
           <Link href="#" className="text-mono" style={{ color: 'var(--text-muted)', textDecoration: 'none', fontSize: '0.85rem', letterSpacing: '1px' }}>RULES</Link>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
-          {(role === 'agent' || role === 'admin') && (
+          {(role === 'agent' || role === 'management' || role === 'admin') && (
             <Link href="/pending" className="text-mono" style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem', textDecoration: 'none', border: '1px solid var(--accent-primary)', color: 'var(--accent-primary)' }}>
               PENDING BETS
             </Link>
@@ -138,7 +138,7 @@ export default function UserProfile() {
             title="Go to Profile"
           >
             <span style={{ fontSize: '0.85rem', color: '#fff', fontWeight: 'bold' }}>{(displayName || loginId).toUpperCase()}</span>
-            <span style={{ fontSize: '0.65rem', color: role === 'admin' ? '#ff2a2a' : role === 'agent' ? 'var(--accent-secondary)' : 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>
+            <span style={{ fontSize: '0.65rem', color: role === 'admin' ? '#ff2a2a' : (role === 'agent' || role === 'management') ? 'var(--accent-secondary)' : 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>
               OP: {role || 'UNKNOWN'}
             </span>
           </div>
@@ -154,7 +154,7 @@ export default function UserProfile() {
         {/* STATS ROW */}
         {(() => {
           // For agents: flip perspective to show HOUSE P&L
-          const isAgent = role === 'agent' || role === 'admin';
+          const isAgent = role === 'agent' || role === 'management' || role === 'admin';
           // House earned = what clients lost (their bet amounts on losing bets)
           const houseEarned = lostBids.reduce((sum, b) => sum + b.amount, 0);
           // House paid = only the PROFIT clients made (payout minus their original bet)
