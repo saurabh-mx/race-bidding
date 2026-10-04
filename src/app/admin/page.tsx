@@ -107,8 +107,11 @@ export default function AdminPage() {
 
       if (allLoginLogs) setLoginLogs(allLoginLogs);
 
-      const { data: allRacers } = await supabase.from('racers').select('id, name, type').order('name', { ascending: true });
-      if (allRacers) setRacers(allRacers);
+      const fetchRacers = async () => {
+        const { data: allRacers } = await supabase.from('racers').select('id, name, type, tournament_points').order('name', { ascending: true });
+        if (allRacers) setRacers(allRacers);
+      };
+      await fetchRacers();
       
       const fetchBids = async () => {
         const { data: activeBids } = await supabase
@@ -130,8 +133,16 @@ export default function AdminPage() {
         })
         .subscribe();
 
+      // Realtime subscription for racers
+      const racersSub = supabase.channel('admin-racers-channel')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'racers' }, () => {
+          fetchRacers();
+        })
+        .subscribe();
+
       return () => {
         supabase.removeChannel(bidsSub);
+        supabase.removeChannel(racersSub);
       };
     };
 
@@ -216,17 +227,25 @@ export default function AdminPage() {
     setShowLeaderboardEdit(true);
   };
 
-  const handlePointBlur = async (racerId: string, newPoints: number) => {
+  const handleSaveLeaderboardPoints = async () => {
     try {
-      const { error } = await supabase
-        .from('racers')
-        .update({ tournament_points: newPoints })
-        .eq('id', racerId);
+      const updates = Object.keys(editingPoints).map(racerId => {
+        return supabase
+          .from('racers')
+          .update({ tournament_points: editingPoints[racerId] })
+          .eq('id', racerId);
+      });
+      await Promise.all(updates);
 
-      if (error) throw error;
+      const { data: allRacers } = await supabase
+        .from('racers')
+        .select('id, name, type, tournament_points')
+        .order('name', { ascending: true });
+        
+      if (allRacers) setRacers(allRacers);
       
-      setRacers(prev => prev.map(r => r.id === racerId ? { ...r, tournament_points: newPoints } : r));
-      // showSuccess('Success', 'Points updated.'); // Optional, might be annoying if it pops up every time
+      showSuccess('Success', 'Leaderboard points updated successfully.');
+      setShowLeaderboardEdit(false);
     } catch (err: any) {
       showError('Error', 'Failed to update points: ' + err.message);
     }
@@ -566,12 +585,6 @@ export default function AdminPage() {
                           style={{ width: '100%', padding: '0.5rem', fontSize: '0.9rem' }}
                           value={editingPoints[r.id] ?? ''}
                           onChange={(e) => setEditingPoints(prev => ({ ...prev, [r.id]: parseInt(e.target.value) || 0 }))}
-                          onBlur={(e) => handlePointBlur(r.id, parseInt(e.target.value) || 0)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              (e.target as HTMLInputElement).blur();
-                            }
-                          }}
                         />
                       </td>
                     </tr>
@@ -583,10 +596,17 @@ export default function AdminPage() {
             <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
               <button 
                 onClick={() => setShowLeaderboardEdit(false)} 
+                className="btn-secondary" 
+                style={{ flex: 1, padding: '1rem', fontSize: '1rem' }}
+              >
+                CANCEL
+              </button>
+              <button 
+                onClick={handleSaveLeaderboardPoints} 
                 className="btn-primary" 
                 style={{ flex: 1, padding: '1rem', fontSize: '1rem' }}
               >
-                CLOSE
+                SAVE CHANGES
               </button>
             </div>
           </div>
