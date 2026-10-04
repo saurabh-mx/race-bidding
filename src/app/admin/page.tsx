@@ -216,25 +216,17 @@ export default function AdminPage() {
     setShowLeaderboardEdit(true);
   };
 
-  const handleSaveLeaderboardPoints = async () => {
+  const handlePointBlur = async (racerId: string, newPoints: number) => {
     try {
-      const updates = Object.keys(editingPoints).map(racerId => {
-        return supabase
-          .from('racers')
-          .update({ tournament_points: editingPoints[racerId] })
-          .eq('id', racerId);
-      });
-      await Promise.all(updates);
-
-      const { data: allRacers } = await supabase
+      const { error } = await supabase
         .from('racers')
-        .select('*')
-        .order('name', { ascending: true });
-        
-      if (allRacers) setRacers(allRacers);
+        .update({ tournament_points: newPoints })
+        .eq('id', racerId);
+
+      if (error) throw error;
       
-      showSuccess('Success', 'Leaderboard points updated successfully.');
-      setShowLeaderboardEdit(false);
+      setRacers(prev => prev.map(r => r.id === racerId ? { ...r, tournament_points: newPoints } : r));
+      // showSuccess('Success', 'Points updated.'); // Optional, might be annoying if it pops up every time
     } catch (err: any) {
       showError('Error', 'Failed to update points: ' + err.message);
     }
@@ -533,7 +525,7 @@ export default function AdminPage() {
                   onClick={() => setLeaderboardTab('RACERS')}
                   style={{ flex: 1, padding: '0.5rem', fontSize: '0.85rem' }}
                 >
-                  RACERS
+                  CAPTAINS
                 </button>
                 <button 
                   className={leaderboardTab === 'TEAMS' ? 'btn-primary' : 'btn-secondary'} 
@@ -563,7 +555,7 @@ export default function AdminPage() {
                   }).sort((a,b) => (editingPoints[b.id] || 0) - (editingPoints[a.id] || 0)).map(r => (
                     <tr key={r.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                       <td style={{ padding: '0.5rem', color: '#fff', fontSize: '0.9rem' }}>{r.name}</td>
-                      <td className="text-mono" style={{ padding: '0.5rem', color: 'var(--text-muted)', fontSize: '0.75rem' }}>{r.type}</td>
+                      <td className="text-mono" style={{ padding: '0.5rem', color: 'var(--text-muted)', fontSize: '0.75rem' }}>{r.type === 'INDIVIDUAL' ? 'CAPTAIN' : r.type}</td>
                       <td className="text-mono" style={{ padding: '0.5rem', color: 'var(--accent-primary)', fontSize: '0.9rem', textAlign: 'right', fontWeight: 'bold' }}>
                         {r.tournament_points || 0}
                       </td>
@@ -574,6 +566,12 @@ export default function AdminPage() {
                           style={{ width: '100%', padding: '0.5rem', fontSize: '0.9rem' }}
                           value={editingPoints[r.id] ?? ''}
                           onChange={(e) => setEditingPoints(prev => ({ ...prev, [r.id]: parseInt(e.target.value) || 0 }))}
+                          onBlur={(e) => handlePointBlur(r.id, parseInt(e.target.value) || 0)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              (e.target as HTMLInputElement).blur();
+                            }
+                          }}
                         />
                       </td>
                     </tr>
@@ -585,17 +583,10 @@ export default function AdminPage() {
             <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
               <button 
                 onClick={() => setShowLeaderboardEdit(false)} 
-                className="btn-secondary" 
-                style={{ flex: 1, padding: '1rem', fontSize: '1rem' }}
-              >
-                CANCEL
-              </button>
-              <button 
-                onClick={handleSaveLeaderboardPoints} 
                 className="btn-primary" 
                 style={{ flex: 1, padding: '1rem', fontSize: '1rem' }}
               >
-                SAVE CHANGES
+                CLOSE
               </button>
             </div>
           </div>
