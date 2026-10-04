@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useModal } from '@/components/ModalProvider';
 import { verifySecurityCode } from '@/app/actions';
 import Leaderboard from '@/components/Leaderboard';
+import BetLeaderboard from '@/components/BetLeaderboard';
 
 type Role = 'viewer' | 'agent' | 'admin';
 
@@ -567,6 +568,11 @@ export default function Dashboard() {
             data.filter(r => r.is_posted === true && ((activeTab === 'ALL' && !r.type.startsWith('MONTHLY_')) || (activeTab === 'INDIVIDUAL' && r.type !== 'TEAM' && !r.type.startsWith('MONTHLY_')) || (activeTab === 'MONTHLY' && r.type === 'MONTHLY_RACER') || r.type === activeTab)).map((racer, idx) => renderCard(racer, idx))
           )}
         </div>
+        </div>
+
+        {/* BET POOLS SIDEBAR */}
+        <div style={{ flex: '0 0 300px', position: 'sticky', top: '100px', height: 'calc(100vh - 120px)' }}>
+          <BetLeaderboard />
         </div>
       </div>
 

@@ -139,9 +139,31 @@ export function GlobalTimer() {
   };
   
   const handleAnnounceWinner = async () => {
-    if (Object.keys(racerPositions).length === 0) {
-      showError('Validation Error', 'No positions selected. Please assign at least one position.');
-      return;
+    let finalPositions = { ...racerPositions };
+
+    if (winnerType === 'TEAM') {
+      const { data: teams } = await supabase.from('racers').select('id, name, tournament_points').eq('type', 'TEAM');
+      const { data: racers } = await supabase.from('racers').select('id, team_name, tournament_points').neq('type', 'TEAM').not('type', 'ilike', 'MONTHLY%');
+
+      if (teams && racers) {
+        const teamScores = teams.map(team => {
+          const teamRacers = racers.filter(r => r.team_name === team.name);
+          const collectivePoints = teamRacers.reduce((sum, r) => sum + (r.tournament_points || 0), 0);
+          return {
+            id: team.id,
+            points: (team.tournament_points || 0) + collectivePoints
+          };
+        }).sort((a, b) => b.points - a.points);
+        
+        teamScores.forEach((t, index) => {
+          finalPositions[t.id] = String(index + 1);
+        });
+      }
+    } else {
+      if (Object.keys(finalPositions).length === 0) {
+        showError('Validation Error', 'No positions selected. Please assign at least one position.');
+        return;
+      }
     }
     
     // Prevent announcement if timer is active
@@ -208,8 +230,8 @@ export function GlobalTimer() {
         };
 
         // 3. Calculate winning pool and losing pool
-        const winningBids = allBids.filter((b: any) => isPositionInBucket(racerPositions[b.racer_id], b.position_prediction));
-        const losingBids = allBids.filter((b: any) => !isPositionInBucket(racerPositions[b.racer_id], b.position_prediction));
+        const winningBids = allBids.filter((b: any) => isPositionInBucket(finalPositions[b.racer_id], b.position_prediction));
+        const losingBids = allBids.filter((b: any) => !isPositionInBucket(finalPositions[b.racer_id], b.position_prediction));
 
         const totalWinningPool = winningBids.reduce((sum: number, b: any) => sum + b.amount, 0);
         const totalLosingPool = losingBids.reduce((sum: number, b: any) => sum + b.amount, 0);
@@ -245,8 +267,8 @@ export function GlobalTimer() {
 
     // --- UPDATE TOURNAMENT TELEMETRY FOR PARTICIPANTS ---
     for (const racerId of postedRacerIds) {
-      if (racerPositions[racerId]) {
-        const exactPosStr = racerPositions[racerId];
+      if (finalPositions[racerId]) {
+        const exactPosStr = finalPositions[racerId];
         let exactPos = 15;
         let isDnf = false;
         let isDsq = false;
@@ -266,7 +288,8 @@ export function GlobalTimer() {
           }
 
           let earnedPoints = 0;
-          if (isDnf) earnedPoints = -2;
+          if (racerData.type === 'TEAM') earnedPoints = 0;
+          else if (isDnf) earnedPoints = -2;
           else if (isDsq) earnedPoints = -10;
           else if (exactPos === 1) earnedPoints = 30;
           else if (exactPos === 2) earnedPoints = 27;
@@ -316,7 +339,7 @@ export function GlobalTimer() {
     
     // --- UPDATE LATEST WINNER DISPLAY ---
     let firstPlaceId: string | null = null;
-    for (const [id, pos] of Object.entries(racerPositions)) {
+    for (const [id, pos] of Object.entries(finalPositions)) {
       if (parseInt(pos as string, 10) === 1) {
         firstPlaceId = id;
         break;
@@ -728,29 +751,40 @@ export function GlobalTimer() {
             </div>
 
             <div style={{ maxHeight: '400px', overflowY: 'auto', marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', paddingRight: '0.5rem' }}>
-              {winnerOptions
-                .filter(r => winnerType === 'TEAM' ? r.type === 'TEAM' : winnerType === 'MONTHLY' ? (r.type === 'MONTHLY_RACER') : (r.type !== 'TEAM' && r.type !== 'MONTHLY_RACER'))
-                .filter(r => r.name.toLowerCase().includes(winnerInput.toLowerCase()))
-                .map((r) => (
-                  <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.05)', padding: '0.5rem 1rem', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)' }}>
-                    <span className="text-mono" style={{ color: '#fff', fontSize: '0.85rem' }}>{r.name}</span>
-                    <select 
-                      className="input-base" 
-                      value={racerPositions[r.id] || ''}
-                      onChange={e => setRacerPositions(prev => ({ ...prev, [r.id]: e.target.value }))}
-                      style={{ width: '150px', padding: '0.5rem', fontSize: '0.85rem', appearance: 'none', background: 'rgba(0,0,0,0.5)', cursor: 'pointer' }}
-                    >
-                      <option value="" disabled>Position...</option>
-                      {(r.type === 'TEAM' ? 
-                        Array.from({ length: 15 }, (_, i) => String(i + 1)) : 
-                        Array.from({ length: 45 }, (_, i) => String(i + 1))
-                      ).concat(['DNF', 'DSQ']).filter(opt => opt === 'DNF' || opt === 'DSQ' || opt === racerPositions[r.id] || !Object.values(racerPositions).includes(opt))
-                      .map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                    </select>
-                  </div>
-              ))}
-              {winnerOptions.filter(r => winnerType === 'TEAM' ? r.type === 'TEAM' : winnerType === 'MONTHLY' ? (r.type === 'MONTHLY_RACER') : (r.type !== 'TEAM' && r.type !== 'MONTHLY_RACER')).length === 0 && (
-                <p className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '1rem' }}>No active participants in this category.</p>
+              {winnerType === 'TEAM' ? (
+                <div style={{ textAlign: 'center', padding: '2rem' }}>
+                  <p className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                    Team positions are automatically calculated based on the live leaderboard.
+                  </p>
+                  <p className="text-mono" style={{ color: 'var(--accent-primary)', fontSize: '0.85rem', marginTop: '0.5rem' }}>
+                    Click CONFIRM to announce the results and payout.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {winnerOptions
+                    .filter(r => winnerType === 'MONTHLY' ? (r.type === 'MONTHLY_RACER') : (r.type !== 'TEAM' && r.type !== 'MONTHLY_RACER'))
+                    .filter(r => r.name.toLowerCase().includes(winnerInput.toLowerCase()))
+                    .map((r) => (
+                      <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.05)', padding: '0.5rem 1rem', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                        <span className="text-mono" style={{ color: '#fff', fontSize: '0.85rem' }}>{r.name}</span>
+                        <select 
+                          className="input-base" 
+                          value={racerPositions[r.id] || ''}
+                          onChange={e => setRacerPositions(prev => ({ ...prev, [r.id]: e.target.value }))}
+                          style={{ width: '150px', padding: '0.5rem', fontSize: '0.85rem', appearance: 'none', background: 'rgba(0,0,0,0.5)', cursor: 'pointer' }}
+                        >
+                          <option value="" disabled>Position...</option>
+                          {Array.from({ length: 45 }, (_, i) => String(i + 1))
+                            .concat(['DNF', 'DSQ']).filter(opt => opt === 'DNF' || opt === 'DSQ' || opt === racerPositions[r.id] || !Object.values(racerPositions).includes(opt))
+                          .map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                        </select>
+                      </div>
+                  ))}
+                  {winnerOptions.filter(r => winnerType === 'MONTHLY' ? (r.type === 'MONTHLY_RACER') : (r.type !== 'TEAM' && r.type !== 'MONTHLY_RACER')).length === 0 && (
+                    <p className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '1rem' }}>No active participants in this category.</p>
+                  )}
+                </>
               )}
             </div>
             
