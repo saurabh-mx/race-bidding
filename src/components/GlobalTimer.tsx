@@ -1,9 +1,12 @@
 'use client';
 import { useState, useEffect } from 'react';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { useModal } from '@/components/ModalProvider';
 
 export function GlobalTimer() {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { showConfirm, showError, showSuccess } = useModal();
   const [teamEnd, setTeamEnd] = useState<Date | null>(null);
   const [indEnd, setIndEnd] = useState<Date | null>(null);
@@ -31,6 +34,7 @@ export function GlobalTimer() {
   const [pendingRaces, setPendingRaces] = useState<any[]>([]);
   const [selectedPendingRace, setSelectedPendingRace] = useState<string>('');
   const [raceForm, setRaceForm] = useState<{name: string, track: string, teamTimer: string, racerTimer: string, teamMinBet: string, racerMinBet: string, teams: any[], racers: any[]}>({ name: '', track: '', teamTimer: '', racerTimer: '', teamMinBet: '', racerMinBet: '', teams: [], racers: [] });
+  const [showTimersOnStream, setShowTimersOnStream] = useState(true);
 
   useEffect(() => {
     const checkUser = async () => {
@@ -75,6 +79,21 @@ export function GlobalTimer() {
     window.addEventListener('open-host-panel', handleOpenHost);
     return () => window.removeEventListener('open-host-panel', handleOpenHost);
   }, []);
+
+  useEffect(() => {
+    // Only subscribe to the Streamer Mode controls if we are in Streamer or Panel view
+    if (pathname !== '/streamer' && pathname !== '/streamer/panel') return;
+    
+    const handleToggle = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail && customEvent.detail.showTimers !== undefined) {
+        setShowTimersOnStream(customEvent.detail.showTimers);
+      }
+    };
+    
+    window.addEventListener('local-timer-toggle', handleToggle);
+    return () => window.removeEventListener('local-timer-toggle', handleToggle);
+  }, [pathname]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -605,11 +624,16 @@ export function GlobalTimer() {
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
+  const isStreamerMode = pathname === '/streamer';
+  const isStreamIframe = searchParams?.get('stream') === 'true';
+  
+  if (isStreamIframe) return null;
+
   return (
     <>
       <div style={{
         position: 'fixed',
-        bottom: 0,
+        ...(isStreamerMode ? { top: 0 } : { bottom: 0 }),
         left: 0,
         right: 0,
         zIndex: 100,
@@ -617,12 +641,15 @@ export function GlobalTimer() {
         flexDirection: 'row',
         gap: '2rem',
         justifyContent: 'center',
-        alignItems: 'flex-end',
-        background: 'rgba(0,0,0,0.8)',
-        backdropFilter: 'blur(10px)',
-        borderTop: '1px solid rgba(255,255,255,0.1)',
-        padding: '1rem 2rem',
+        alignItems: isStreamerMode ? 'flex-start' : 'flex-end',
+        background: isStreamerMode ? 'transparent' : 'rgba(0,0,0,0.8)',
+        backdropFilter: isStreamerMode ? 'none' : 'blur(10px)',
+        borderTop: isStreamerMode ? 'none' : '1px solid rgba(255,255,255,0.1)',
+        borderBottom: isStreamerMode ? 'none' : 'none',
+        padding: isStreamerMode ? '1.5rem 2rem' : '1rem 2rem',
         pointerEvents: 'none',
+        opacity: isStreamerMode ? (showTimersOnStream ? 1 : 0) : (showTimersOnStream ? 1 : 0.3),
+        transition: 'opacity 0.4s',
       }}>
         {/* TEAM TIMER */}
         <div style={{ pointerEvents: 'auto', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem' }}>
@@ -643,7 +670,7 @@ export function GlobalTimer() {
             </p>
           </div>
 
-          {(role === 'admin' || role === 'management') && (
+          {(role === 'admin' || role === 'management') && !isStreamerMode && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
               <div style={{ display: 'flex', gap: '0.25rem' }}>
                 <button onClick={() => handleSetTimer(5, 'TEAM')} className="btn-secondary" style={{ width: '38px', padding: '0.25rem 0', fontSize: '0.65rem' }}>+5M</button>
@@ -678,7 +705,7 @@ export function GlobalTimer() {
             </p>
           </div>
 
-          {(role === 'admin' || role === 'management') && (
+          {(role === 'admin' || role === 'management') && !isStreamerMode && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
               <div style={{ display: 'flex', gap: '0.25rem' }}>
                 <button onClick={() => handleSetTimer(5, 'INDIVIDUAL')} className="btn-secondary" style={{ width: '38px', padding: '0.25rem 0', fontSize: '0.65rem' }}>+5M</button>
@@ -713,7 +740,7 @@ export function GlobalTimer() {
             </p>
           </div>
 
-          {(role === 'admin' || role === 'management') && (
+          {(role === 'admin' || role === 'management') && !isStreamerMode && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
               <div style={{ display: 'flex', gap: '0.25rem' }}>
                 <button onClick={() => handleSetTimer(5, 'MONTHLY')} className="btn-secondary" style={{ width: '38px', padding: '0.25rem 0', fontSize: '0.65rem' }}>+5M</button>
@@ -730,7 +757,7 @@ export function GlobalTimer() {
         </div>
 
         {/* HOST RACE BET BUTTON */}
-        {(role === 'admin' || role === 'management') && (
+        {(role === 'admin' || role === 'management') && !isStreamerMode && (
           <div style={{ pointerEvents: 'auto', display: 'flex', alignItems: 'center' }}>
             <button 
               className="btn-primary" 

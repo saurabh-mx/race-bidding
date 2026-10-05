@@ -2,7 +2,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { supabase } from '@/lib/supabase';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useModal } from '@/components/ModalProvider';
 
@@ -47,6 +47,9 @@ type Bid = {
 export default function RacerProfile() {
   const { id } = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const isStream = searchParams?.get('stream') === 'true';
+  const isDirector = searchParams?.get('director') === 'true';
   const [racer, setRacer] = useState<Racer | null>(null);
   const [bids, setBids] = useState<Bid[]>([]);
   const { showError, showConfirm } = useModal();
@@ -97,12 +100,47 @@ export default function RacerProfile() {
     window.addEventListener('ind-betting-status', handleIndBetStatus);
     window.addEventListener('monthly-betting-status', handleMonthlyBetStatus);
     
+    // SCROLL SYNC LOGIC
+    let scrollSyncChannel: any = null;
+    let throttleTimer: any = null;
+    let scrollListener: any = null;
+
+    if (isStream) {
+      if (isDirector) {
+        // Director Panel sends scroll position
+        scrollListener = () => {
+          if (throttleTimer) return;
+          throttleTimer = setTimeout(() => {
+            const y = window.scrollY;
+            supabase.channel('profile-scroll-sync').send({
+              type: 'broadcast',
+              event: 'scroll',
+              payload: { y, id: id }
+            });
+            throttleTimer = null;
+          }, 30);
+        };
+        window.addEventListener('scroll', scrollListener);
+      } else {
+        // OBS Streamer View receives scroll position
+        scrollSyncChannel = supabase.channel('profile-scroll-sync')
+          .on('broadcast', { event: 'scroll' }, (payload) => {
+            if (payload.payload.id === id) {
+              window.scrollTo({ top: payload.payload.y, behavior: 'instant' });
+            }
+          })
+          .subscribe();
+      }
+    }
+
     return () => {
       window.removeEventListener('team-betting-status', handleTeamBetStatus);
       window.removeEventListener('ind-betting-status', handleIndBetStatus);
       window.removeEventListener('monthly-betting-status', handleMonthlyBetStatus);
+      if (scrollListener) window.removeEventListener('scroll', scrollListener);
+      if (scrollSyncChannel) supabase.removeChannel(scrollSyncChannel);
     };
-  }, []);
+  }, [id, isStream, isDirector]);
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -578,46 +616,49 @@ export default function RacerProfile() {
   }
 
   return (
-    <main style={{ paddingBottom: '4rem' }}>
-      <header className="glass-header">
-        <Link href="/dashboard" style={{ textDecoration: 'none' }}>
-           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-             <img src="/logo.png" alt="Race Betting" style={{ height: '50px', width: 'auto', borderRadius: '50%' }} />
-             <h1 className="title-gradient" style={{ fontSize: '1.5rem', color: '#f21818' }}>RACEBET.</h1>
-           </div>
-        </Link>
-        <div style={{ display: 'flex', gap: '2rem', flex: 1, justifyContent: 'center' }}>
-          <Link href="/teams" className="text-mono" style={{ color: '#fff', textDecoration: 'none', fontSize: '0.85rem', letterSpacing: '1px' }}>TEAMS</Link>
-          <Link href="/drivers" className="text-mono" style={{ color: '#fff', textDecoration: 'none', fontSize: '0.85rem', letterSpacing: '1px' }}>RACERS</Link>
-          <Link href="#" className="text-mono" style={{ color: 'var(--text-muted)', textDecoration: 'none', fontSize: '0.85rem', letterSpacing: '1px' }}>RULES</Link>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
-          {(role === 'agent' || role === 'management' || role === 'admin') && (
-            <Link href="/pending" className="text-mono" style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem', textDecoration: 'none', border: '1px solid var(--accent-primary)', color: 'var(--accent-primary)' }}>
-              PENDING BETS
-            </Link>
-          )}
-          <div 
-            className="text-mono hover-glow" 
-            style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', cursor: 'pointer', padding: '0.25rem 0.5rem', borderRadius: '4px' }}
-            onClick={() => router.push('/profile')}
-            title="Go to Profile"
-          >
-            <span style={{ fontSize: '0.85rem', color: '#fff', fontWeight: 'bold' }}>{(displayName || loginId).toUpperCase()}</span>
-            <span style={{ fontSize: '0.65rem', color: role === 'admin' ? '#ff2a2a' : (role === 'agent' || role === 'management') ? 'var(--accent-secondary)' : 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>
-              OP: {role || 'UNKNOWN'}
-            </span>
+    <main style={{ paddingBottom: isStream ? '0' : '4rem', overflow: isStream && !isDirector ? 'hidden' : 'auto' }}>
+      <style>{isStream && !isDirector ? `::-webkit-scrollbar { display: none; }` : ''}</style>
+      {!isStream && (
+        <header className="glass-header">
+          <Link href="/dashboard" style={{ textDecoration: 'none' }}>
+             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+               <img src="/logo.png" alt="Race Betting" style={{ height: '50px', width: 'auto', borderRadius: '50%' }} />
+               <h1 className="title-gradient" style={{ fontSize: '1.5rem', color: '#f21818' }}>RACEBET.</h1>
+             </div>
+          </Link>
+          <div style={{ display: 'flex', gap: '2rem', flex: 1, justifyContent: 'center' }}>
+            <Link href="/teams" className="text-mono" style={{ color: '#fff', textDecoration: 'none', fontSize: '0.85rem', letterSpacing: '1px' }}>TEAMS</Link>
+            <Link href="/drivers" className="text-mono" style={{ color: '#fff', textDecoration: 'none', fontSize: '0.85rem', letterSpacing: '1px' }}>RACERS</Link>
+            <Link href="#" className="text-mono" style={{ color: 'var(--text-muted)', textDecoration: 'none', fontSize: '0.85rem', letterSpacing: '1px' }}>RULES</Link>
           </div>
-          <button className="btn-secondary" onClick={() => router.push('/profile')} style={{ padding: '0.5rem 1rem', fontSize: '0.75rem', borderColor: 'var(--accent-primary)', color: '#fff' }}>
-            PROFILE
-          </button>
-          <button className="btn-secondary" onClick={() => router.back()} style={{ padding: '0.5rem 1rem', fontSize: '0.75rem' }}>
-            &lt; RETURN TO GRID
-          </button>
-        </div>
-      </header>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
+            {(role === 'agent' || role === 'management' || role === 'admin') && (
+              <Link href="/pending" className="text-mono" style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem', textDecoration: 'none', border: '1px solid var(--accent-primary)', color: 'var(--accent-primary)' }}>
+                PENDING BETS
+              </Link>
+            )}
+            <div 
+              className="text-mono hover-glow" 
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', cursor: 'pointer', padding: '0.25rem 0.5rem', borderRadius: '4px' }}
+              onClick={() => router.push('/profile')}
+              title="Go to Profile"
+            >
+              <span style={{ fontSize: '0.85rem', color: '#fff', fontWeight: 'bold' }}>{(displayName || loginId).toUpperCase()}</span>
+              <span style={{ fontSize: '0.65rem', color: role === 'admin' ? '#ff2a2a' : (role === 'agent' || role === 'management') ? 'var(--accent-secondary)' : 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>
+                OP: {role || 'UNKNOWN'}
+              </span>
+            </div>
+            <button className="btn-secondary" onClick={() => router.push('/profile')} style={{ padding: '0.5rem 1rem', fontSize: '0.75rem', borderColor: 'var(--accent-primary)', color: '#fff' }}>
+              PROFILE
+            </button>
+            <button className="btn-secondary" onClick={() => router.back()} style={{ padding: '0.5rem 1rem', fontSize: '0.75rem' }}>
+              &lt; RETURN TO GRID
+            </button>
+          </div>
+        </header>
+      )}
 
-      <div className="container" style={{ marginTop: '3rem' }}>
+      <div className={isStream ? "" : "container"} style={{ marginTop: isStream ? '1rem' : '3rem', padding: isStream ? '0' : undefined }}>
         
         {/* Profile Header */}
         <div className="glass-panel animate-in" style={{ padding: '3rem', marginBottom: '3rem', display: 'flex', flexWrap: 'wrap', gap: '2rem', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -657,7 +698,7 @@ export default function RacerProfile() {
                   </span>
                 )}
 
-                {role === 'admin' && (
+                {role === 'admin' && !isStream && (
                   <button className="btn-secondary" onClick={() => setIsEditing(true)} style={{ padding: '0.5rem 1rem', fontSize: '0.75rem', borderColor: '#ff2a2a', color: '#ff2a2a', marginLeft: '0.5rem' }}>
                     EDIT ENTITY
                   </button>
@@ -1163,7 +1204,7 @@ export default function RacerProfile() {
         <div className="glass-panel animate-in stagger-2" style={{ padding: '2rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
             <h2 className="title-gradient" style={{ fontSize: '1.5rem', textTransform: 'uppercase', margin: 0 }}>BETTING HISTORY</h2>
-            {role === 'admin' && bids.length > 0 && (
+            {role === 'admin' && bids.length > 0 && !isStream && (
               <button 
                 onClick={handleClearAllBets}
                 className="text-mono"
@@ -1183,7 +1224,6 @@ export default function RacerProfile() {
               <thead>
                 <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', textAlign: 'left' }}>
                   <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)' }}>TIMESTAMP</th>
-                  <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)' }}>BETTOR NAME | CID</th>
                   <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)' }}>RACE</th>
                   <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)', textAlign: 'right' }}>AMOUNT</th>
                   <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)', textAlign: 'right' }}>PROFIT / LOSS</th>
@@ -1197,9 +1237,6 @@ export default function RacerProfile() {
                   <tr key={bid.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                     <td className="text-mono" style={{ padding: '1rem', fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)' }}>
                       {new Date(bid.created_at).toLocaleString()}
-                    </td>
-                    <td className="text-mono" style={{ padding: '1rem', color: '#fff', fontWeight: 'bold' }}>
-                      {bid.bidder_name || bid.profiles?.login_id || 'Unknown'}
                     </td>
                     <td className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)' }}>
                       {bid.round_id ? `RACE ${bid.round_id}` : '—'}
@@ -1429,7 +1466,7 @@ export default function RacerProfile() {
                 </select>
               </div>
 
-              {(role === 'admin' || role === 'agent' || role === 'management') && (
+              {(role === 'admin' || role === 'agent' || role === 'management') && !isStream && (
                 <>
                   <div>
                     <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem' }}>BETTOR NAME</label>

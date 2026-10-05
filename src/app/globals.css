@@ -4,7 +4,7 @@
   --bg-color: #0d0404;
   --bg-card: rgba(20, 5, 5, 0.7);
   --text-main: #f8fafc;
-  --text-muted: #94a3b8;
+  --text-muted: #cbd5e1; /* Increased contrast for accessibility */
   --accent-primary: #f21818; /* Race Red */
   --accent-secondary: #ff3333; /* Bright Red */
   --accent-glow: rgba(242, 24, 24, 0.5);
@@ -15,6 +15,9 @@
   
   --font-display: 'Outfit', sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
+}
+html {
+  font-size: 18px; /* High-accessibility scaling (enlarges all rem units globally) */
 }
 
 * {
@@ -101,7 +104,8 @@ h1, h2, h3, h4, h5, h6 {
   border: 1px solid rgba(255,255,255,0.1);
   color: var(--text-main);
   padding: 0.85rem 1.2rem;
-  border-radius: 2px;
+  min-height: 48px; /* Accessible touch target */
+  border-radius: 6px; /* Softer, forgiving UI */
   font-family: var(--font-mono);
   outline: none;
   transition: all 0.3s ease;
@@ -119,7 +123,8 @@ h1, h2, h3, h4, h5, h6 {
   color: #fff;
   border: none;
   padding: 0.85rem 1.5rem;
-  border-radius: 2px;
+  min-height: 48px; /* Accessible touch target */
+  border-radius: 6px; /* Softer, forgiving UI */
   font-family: var(--font-display);
   font-weight: 900;
   font-style: italic;
@@ -145,7 +150,8 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--text-main);
   border: 1px solid rgba(255,255,255,0.3);
   padding: 0.85rem 1.5rem;
-  border-radius: 2px;
+  min-height: 48px; /* Accessible touch target */
+  border-radius: 6px; /* Softer, forgiving UI */
   font-family: var(--font-display);
   font-weight: 800;
   font-style: italic;

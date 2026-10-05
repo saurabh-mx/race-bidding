@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { usePathname } from 'next/navigation';
 
 export default function Leaderboard() {
+  const pathname = usePathname();
   const [topTeams, setTopTeams] = useState<any[]>([]);
   const [expandedTeamId, setExpandedTeamId] = useState<string | null>(null);
 
@@ -17,10 +19,21 @@ export default function Leaderboard() {
       })
       .subscribe();
 
+    // Sync expanded state across Leaderboard instances (useful for Streamer Mode)
+    let syncChannel: any = null;
+    if (pathname.startsWith('/streamer')) {
+      syncChannel = supabase.channel('leaderboard-sync-channel')
+        .on('broadcast', { event: 'expand-row' }, (payload) => {
+          setExpandedTeamId(payload.payload.id);
+        })
+        .subscribe();
+    }
+
     return () => {
       supabase.removeChannel(channel);
+      if (syncChannel) supabase.removeChannel(syncChannel);
     };
-  }, []);
+  }, [pathname]);
 
   const fetchLeaderboard = async () => {
     const { data: teams } = await supabase
@@ -63,7 +76,19 @@ export default function Leaderboard() {
           return (
             <div key={item.id} style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
               <div 
-                onClick={() => setExpandedTeamId(isExpanded ? null : item.id)}
+                onClick={() => {
+                  const newId = isExpanded ? null : item.id;
+                  setExpandedTeamId(newId);
+                  
+                  // Only allow the Streamer Panel (Director) to control the OBS feed
+                  if (pathname === '/streamer/panel') {
+                    supabase.channel('leaderboard-sync-channel').send({
+                      type: 'broadcast',
+                      event: 'expand-row',
+                      payload: { id: newId }
+                    });
+                  }
+                }}
                 style={{ 
                   display: 'flex', alignItems: 'center', background: 'rgba(255,255,255,0.05)', 
                   padding: '0.75rem 1rem', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)',

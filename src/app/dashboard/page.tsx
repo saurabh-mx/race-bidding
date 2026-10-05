@@ -7,8 +7,9 @@ import { useModal } from '@/components/ModalProvider';
 import { verifySecurityCode } from '@/app/actions';
 import Leaderboard from '@/components/Leaderboard';
 import BetLeaderboard from '@/components/BetLeaderboard';
+import { AccessibleButton, AccessibleInput, InfoCard } from '@/components/SeniorComponents';
 
-type Role = 'viewer' | 'agent' | 'admin';
+type Role = 'viewer' | 'agent' | 'management' | 'admin';
 
 type Racer = {
   id: string;
@@ -429,11 +430,11 @@ export default function Dashboard() {
             const canBet = isWindowOpen || role === 'admin';
             
             return (
-              <button 
-                className={canBet ? "btn-primary" : "btn-secondary"} 
-                style={{ flex: 1, display: 'flex', justifyContent: 'space-between', opacity: canBet ? 1 : 0.5 }} 
+              <AccessibleButton 
+                variant={canBet ? "primary" : "secondary"}
+                style={{ flex: 1, display: 'flex', justifyContent: 'space-between', opacity: canBet ? 1 : 0.5, padding: '12px 16px', minWidth: '0' }}
                 disabled={!canBet}
-                onClick={e => { 
+                onClick={(e: React.MouseEvent) => { 
                   e.stopPropagation(); 
                   setBiddingId(racer.id); 
                   setBidAmount('');
@@ -441,14 +442,14 @@ export default function Dashboard() {
               >
                 <span>{canBet ? 'PLACE BET' : 'BETS CLOSED'}</span>
                 <span className="text-mono">&gt;</span>
-              </button>
+              </AccessibleButton>
             );
           })()}
           
           {(role === 'agent' || role === 'management' || role === 'admin') && (
-            <button className="btn-secondary" style={{ flex: '0 0 auto', padding: '0.85rem 1rem' }} onClick={e => { e.stopPropagation(); setEditModalRacerId(racer.id); }}>
+            <AccessibleButton variant="secondary" style={{ flex: '0 0 auto', padding: '12px 16px', minWidth: '0' }} onClick={(e: React.MouseEvent) => { e.stopPropagation(); setEditModalRacerId(racer.id); }}>
               EDIT
-            </button>
+            </AccessibleButton>
           )}
         </div>
       </div>
@@ -491,6 +492,16 @@ export default function Dashboard() {
               <Link href="/pending" className="text-mono" style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem', textDecoration: 'none', border: '1px solid var(--accent-primary)', color: 'var(--accent-primary)' }}>
                 PENDING BETS
               </Link>
+              {(role === 'management' || role === 'admin') && (
+                <>
+                  <Link href="/streamer" className="text-mono" style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem', textDecoration: 'none', border: '1px solid #00ff88', color: '#00ff88', background: 'rgba(0,255,136,0.1)' }}>
+                    STREAMER MODE
+                  </Link>
+                  <Link href="/streamer/panel" className="text-mono" style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem', textDecoration: 'none', border: '1px solid #00ff88', color: '#00ff88' }}>
+                    STREAMER PANEL
+                  </Link>
+                </>
+              )}
             </>
           )}
           <div 
@@ -515,15 +526,22 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <div style={{ padding: '0 4vw', marginTop: '2rem', display: 'flex', gap: '2rem', alignItems: 'flex-start' }}>
+      <div style={{ 
+        width: '98%', 
+        margin: '2rem auto', 
+        display: 'grid', 
+        gridTemplateColumns: 'minmax(320px, 350px) 1fr minmax(320px, 350px)', 
+        gap: '2rem', 
+        alignItems: 'start' 
+      }}>
         
         {/* LEADERBOARD SIDEBAR */}
-        <div style={{ flex: '0 0 300px', position: 'sticky', top: '100px', height: 'calc(100vh - 120px)' }}>
+        <div style={{ position: 'sticky', top: '100px', height: 'calc(100vh - 120px)' }}>
           <Leaderboard />
         </div>
 
         {/* MAIN CONTENT */}
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ minWidth: 0 }}>
           <div className="animate-in" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '3rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '1rem' }}>
           <div>
             <h2 className="title-gradient" style={{ fontSize: '3rem', textTransform: 'uppercase' }}>Live Terminal</h2>
@@ -571,7 +589,7 @@ export default function Dashboard() {
         </div>
 
         {/* BET POOLS SIDEBAR */}
-        <div style={{ flex: '0 0 300px', position: 'sticky', top: '100px', height: 'calc(100vh - 120px)' }}>
+        <div style={{ position: 'sticky', top: '100px', height: 'calc(100vh - 120px)' }}>
           <BetLeaderboard />
         </div>
       </div>
@@ -593,22 +611,19 @@ export default function Dashboard() {
                   </p>
                   
                   <form onSubmit={handleBid} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginBottom: '2rem' }}>
-              <div>
-                <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem' }}>BET AMOUNT ($)</label>
-                <input 
+                <AccessibleInput 
+                  label="BET AMOUNT ($)"
+                  id="betAmount"
                   type="number" 
-                  className="input-base" 
                   value={bidAmount}
-                  onChange={(e) => setBidAmount(e.target.value)}
+                  onChange={(e: any) => setBidAmount(e.target.value)}
                   placeholder="Enter bet amount..."
-                  style={{ width: '100%' }}
                   required
                   autoFocus
                 />
-              </div>
 
               <div>
-                <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem' }}>POSITION PREDICTION</label>
+                <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>POSITION PREDICTION</label>
                 <select 
                   className="input-base" 
                   value={positionPrediction}
@@ -624,54 +639,44 @@ export default function Dashboard() {
                 </select>
               </div>
 
-              <div>
-                <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem' }}>BETTOR NAME</label>
-                <input 
-                  type="text" 
-                  className="input-base" 
-                  value={bettorName}
-                  onChange={(e) => setBettorName(e.target.value)}
-                  placeholder="Enter bettor's name..."
-                  style={{ width: '100%' }}
-                  required
-                />
-              </div>
+              <AccessibleInput 
+                label="BETTOR NAME"
+                id="bettorName"
+                type="text" 
+                value={bettorName}
+                onChange={(e: any) => setBettorName(e.target.value)}
+                placeholder="Enter bettor's name..."
+                required
+              />
 
-              <div>
-                <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem' }}>CID</label>
-                <input 
-                  type="text" 
-                  className="input-base" 
-                  value={cid}
-                  onChange={(e) => setCid(e.target.value)}
-                  placeholder="Enter CID..."
-                  style={{ width: '100%' }}
-                  required
-                />
-              </div>
+              <AccessibleInput 
+                label="CID"
+                id="cid"
+                type="text" 
+                value={cid}
+                onChange={(e: any) => setCid(e.target.value)}
+                placeholder="Enter CID..."
+                required
+              />
 
-              <div>
-                <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem' }}>IMAGE LINK (RECEIPT)</label>
-                <input 
-                  type="url" 
-                  className="input-base" 
-                  value={imageLink}
-                  onChange={(e) => setImageLink(e.target.value)}
-                  placeholder="https://..."
-                  style={{ width: '100%' }}
-                />
-              </div>
+              <AccessibleInput 
+                label="IMAGE LINK (RECEIPT)"
+                id="imageLink"
+                type="url" 
+                value={imageLink}
+                onChange={(e: any) => setImageLink(e.target.value)}
+                placeholder="https://..."
+              />
 
               <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
-                <button type="button" className="btn-secondary" onClick={() => setBiddingId(null)}>CANCEL</button>
-                <button 
-                  type="submit" 
-                  className={isBetValid ? "btn-primary" : "btn-secondary"} 
+                <AccessibleButton variant="secondary" onClick={() => setBiddingId(null)}>CANCEL</AccessibleButton>
+                <AccessibleButton 
+                  variant={isBetValid ? "primary" : "secondary"} 
                   disabled={!isBetValid}
                   style={{ opacity: isBetValid ? 1 : 0.5 }}
                 >
                   CONFIRM BET
-                </button>
+                </AccessibleButton>
               </div>
             </form>
             </>
@@ -690,22 +695,22 @@ export default function Dashboard() {
             </p>
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '2rem' }}>
-              <button className="btn-primary" onClick={() => {
+              <AccessibleButton variant="primary" onClick={() => {
                 setAdjustingBetRacerId(editModalRacerId);
                 setAdjustBetAmount('');
-              }} style={{ padding: '1rem', fontSize: '1rem' }}>ADJUST TOTAL BET</button>
+              }} style={{ width: '100%' }}>ADJUST TOTAL BET</AccessibleButton>
               
-              <button className="btn-secondary" onClick={() => {
+              <AccessibleButton variant="danger" onClick={() => {
                 handleDeleteRacerBets(editModalRacerId);
-              }} style={{ padding: '1rem', fontSize: '1rem', border: '1px solid #f21818', color: '#f21818' }}>DELETE ALL BETS</button>
+              }} style={{ width: '100%' }}>DELETE ALL BETS</AccessibleButton>
               
-              <button className="btn-secondary" onClick={() => {
+              <AccessibleButton variant="secondary" onClick={() => {
                 router.push(`/racer/${editModalRacerId}`);
-              }} style={{ padding: '1rem', fontSize: '1rem' }}>EDIT RACER PROFILE</button>
+              }} style={{ width: '100%' }}>EDIT RACER PROFILE</AccessibleButton>
             </div>
             
             <div style={{ marginTop: '2rem' }}>
-              <button className="btn-secondary" onClick={() => setEditModalRacerId(null)} style={{ width: '100%', padding: '1rem', fontSize: '1rem' }}>CLOSE</button>
+              <AccessibleButton variant="secondary" onClick={() => setEditModalRacerId(null)} style={{ width: '100%' }}>CLOSE</AccessibleButton>
             </div>
           </div>
         </div>

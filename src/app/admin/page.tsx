@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import { useModal } from '@/components/ModalProvider';
+import { AccessibleButton, InfoCard } from '@/components/SeniorComponents';
 type Role = 'viewer' | 'agent' | 'management' | 'admin';
 
 type Profile = {
@@ -38,6 +39,8 @@ type Bid = {
   amount: number;
   racer_id: string;
   bidder_name: string;
+  status?: string;
+  created_at?: string;
   profiles: {
     login_id: string;
   };
@@ -115,8 +118,8 @@ export default function AdminPage() {
       const fetchBids = async () => {
         const { data: activeBids } = await supabase
           .from('bids')
-          .select('id, amount, racer_id, bidder_name, profiles(login_id)')
-          .eq('status', 'APPROVED')
+          .select('id, amount, racer_id, bidder_name, status, created_at, profiles(login_id)')
+          .in('status', ['APPROVED', 'PENDING'])
           .eq('result', 'PENDING');
         // @ts-expect-error
         if (activeBids) setBids(activeBids);
@@ -126,14 +129,14 @@ export default function AdminPage() {
       setIsLoading(false);
 
       // Realtime subscription for bids
-      const bidsSub = supabase.channel('admin-bids-calculator')
+      const bidsSub = supabase.channel(`admin-bids-${Date.now()}`)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'bids' }, () => {
           fetchBids();
         })
         .subscribe();
 
       // Realtime subscription for racers
-      const racersSub = supabase.channel('admin-racers-channel')
+      const racersSub = supabase.channel(`admin-racers-${Date.now()}`)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'racers' }, () => {
           fetchRacers();
         })
@@ -250,6 +253,40 @@ export default function AdminPage() {
     }
   };
 
+  const handleCancelBet = async (bidId: string, amount: number, racerId: string) => {
+    if (!window.confirm('Are you sure you want to completely VOID this bet? This cannot be undone.')) return;
+    
+    try {
+      const { error: updateError } = await supabase
+        .from('bids')
+        .update({ status: 'CANCELLED', result: 'VOID' })
+        .eq('id', bidId);
+        
+      if (updateError) throw updateError;
+      
+      // Refund the racer's pool
+      const racer = racers.find(r => r.id === racerId);
+      if (racer) {
+        const { data: rData } = await supabase.from('racers').select('current_bid').eq('id', racerId).single();
+        if (rData) {
+          await supabase.from('racers').update({ current_bid: Math.max(0, rData.current_bid - amount) }).eq('id', racerId);
+        }
+      }
+      
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        await supabase.from('audit_logs').insert([{
+          user_id: session.user.id,
+          action: 'CANCEL_BET',
+          details: `Admin cancelled bet ${bidId} for $${amount}`
+        }]);
+      }
+      showSuccess('Bet Cancelled', 'The bet has been successfully voided and the pool has been adjusted.');
+    } catch (err: any) {
+      showError('Cancellation Failed', err.message);
+    }
+  };
+
   if (isLoading) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <p className="text-mono animate-in" style={{ color: 'var(--accent-primary)', fontSize: '1.2rem', letterSpacing: '4px' }}>
@@ -289,13 +326,13 @@ export default function AdminPage() {
             </p>
           </div>
           <div>
-            <button 
-              className="btn-primary" 
+            <AccessibleButton 
+              variant="primary" 
               onClick={handleOpenLeaderboardEdit}
-              style={{ padding: '0.75rem 1.5rem', fontSize: '0.85rem' }}
+              style={{ fontSize: '0.85rem' }}
             >
               EDIT LEADERBOARD PTS
-            </button>
+            </AccessibleButton>
           </div>
         </div>
 
@@ -372,23 +409,19 @@ export default function AdminPage() {
 
           {payouts ? (
             <div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
-                <div style={{ padding: '1rem', background: 'rgba(255,255,255,0.05)', borderRadius: '8px' }}>
-                  <p className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>WINNING POOL</p>
-                  <p style={{ fontSize: '2rem', fontWeight: 900, color: '#fff' }}>${payouts.winningPool.toLocaleString()}</p>
-                </div>
-                <div style={{ padding: '1rem', background: 'rgba(255,255,255,0.05)', borderRadius: '8px' }}>
-                  <p className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>LOSING POOL</p>
-                  <p style={{ fontSize: '2rem', fontWeight: 900, color: 'var(--text-muted)' }}>${payouts.losingPool.toLocaleString()}</p>
-                </div>
-                <div style={{ padding: '1rem', background: 'rgba(242,24,24,0.1)', borderRadius: '8px', border: '1px solid rgba(242,24,24,0.3)' }}>
-                  <p className="text-mono" style={{ color: '#f21818', fontSize: '0.75rem' }}>HOUSE EDGE (50%)</p>
-                  <p style={{ fontSize: '2rem', fontWeight: 900, color: '#f21818' }}>${payouts.houseEdge.toLocaleString()}</p>
-                </div>
-                <div style={{ padding: '1rem', background: 'rgba(0,255,136,0.1)', borderRadius: '8px', border: '1px solid rgba(0,255,136,0.3)' }}>
-                  <p className="text-mono" style={{ color: '#00ff88', fontSize: '0.75rem' }}>DISTRIBUTED TO WINNERS</p>
-                  <p style={{ fontSize: '2rem', fontWeight: 900, color: '#00ff88' }}>${payouts.distributedPool.toLocaleString()}</p>
-                </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
+                <InfoCard title="WINNING POOL" style={{ padding: '24px' }}>
+                  <p style={{ fontSize: '2.5rem', fontWeight: 900, color: '#fff', margin: 0 }}>${payouts.winningPool.toLocaleString()}</p>
+                </InfoCard>
+                <InfoCard title="LOSING POOL" style={{ padding: '24px' }}>
+                  <p style={{ fontSize: '2.5rem', fontWeight: 900, color: 'var(--text-muted)', margin: 0 }}>${payouts.losingPool.toLocaleString()}</p>
+                </InfoCard>
+                <InfoCard title="HOUSE EDGE (50%)" style={{ padding: '24px', border: '2px solid #ff2a2a', background: 'rgba(255,42,42,0.1)' }}>
+                  <p style={{ fontSize: '2.5rem', fontWeight: 900, color: '#ff2a2a', margin: 0 }}>${payouts.houseEdge.toLocaleString()}</p>
+                </InfoCard>
+                <InfoCard title="DISTRIBUTED" style={{ padding: '24px', border: '2px solid #00ff88', background: 'rgba(0,255,136,0.1)' }}>
+                  <p style={{ fontSize: '2.5rem', fontWeight: 900, color: '#00ff88', margin: 0 }}>${payouts.distributedPool.toLocaleString()}</p>
+                </InfoCard>
               </div>
 
               {payouts.bettors.length === 0 ? (
@@ -418,6 +451,69 @@ export default function AdminPage() {
             </div>
           ) : (
             <p className="text-mono" style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>SELECT A WINNING RACER TO CALCULATE PAYOUTS.</p>
+          )}
+        </div>
+
+        <div className="animate-in" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: '4rem', marginBottom: '2rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '1rem' }}>
+          <div>
+            <h2 className="title-gradient" style={{ fontSize: '2rem', textTransform: 'uppercase' }}>Active Bets Oversight</h2>
+            <p className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.5rem', letterSpacing: '1px' }}>
+              REVIEW AND VOID ACTIVE BIDS
+            </p>
+          </div>
+        </div>
+
+        <div className="glass-panel animate-in" style={{ padding: '2rem' }}>
+          {bids.length === 0 ? (
+            <p className="text-mono" style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>NO ACTIVE BETS FOUND IN THE SYSTEM.</p>
+          ) : (
+            <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', textAlign: 'left', position: 'sticky', top: 0, background: 'rgba(20,5,5,0.9)', backdropFilter: 'blur(10px)' }}>
+                    <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)' }}>TIME</th>
+                    <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)' }}>BETTOR</th>
+                    <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)' }}>RACER / TEAM</th>
+                    <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)', textAlign: 'right' }}>AMOUNT</th>
+                    <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)', textAlign: 'center' }}>STATUS</th>
+                    <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)', textAlign: 'right' }}>ACTION</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bids.map(bid => {
+                    const r = racers.find(r => r.id === bid.racer_id);
+                    return (
+                      <tr key={bid.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                        <td className="text-mono" style={{ padding: '1rem', fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)' }}>
+                          {bid.created_at ? new Date(bid.created_at).toLocaleTimeString() : 'N/A'}
+                        </td>
+                        <td className="text-mono" style={{ padding: '1rem', color: '#fff', fontWeight: 'bold' }}>{bid.bidder_name || (bid.profiles as any)?.login_id}</td>
+                        <td className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)' }}>{r ? r.name : 'Unknown'}</td>
+                        <td className="text-mono" style={{ padding: '1rem', color: '#fff', textAlign: 'right', fontWeight: 'bold' }}>${bid.amount.toLocaleString()}</td>
+                        <td className="text-mono" style={{ padding: '1rem', textAlign: 'center' }}>
+                          <span style={{ 
+                            background: bid.status === 'APPROVED' ? 'rgba(0,255,136,0.1)' : 'rgba(255,166,0,0.1)',
+                            color: bid.status === 'APPROVED' ? '#00ff88' : 'orange',
+                            padding: '0.25rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem'
+                          }}>
+                            {bid.status}
+                          </span>
+                        </td>
+                        <td style={{ padding: '1rem', textAlign: 'right' }}>
+                          <AccessibleButton 
+                            variant="danger"
+                            onClick={() => handleCancelBet(bid.id, bid.amount, bid.racer_id)}
+                            style={{ fontSize: '0.75rem', padding: '8px 16px', minHeight: '36px', minWidth: 'auto', display: 'inline-block' }}
+                          >
+                            VOID
+                          </AccessibleButton>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
 
