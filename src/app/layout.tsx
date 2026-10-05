@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { Suspense } from "react";
 import { ModalProvider } from "@/components/ModalProvider";
 import { GlobalTimer } from "@/components/GlobalTimer";
 
@@ -17,7 +18,9 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <ModalProvider>
-          <GlobalTimer />
+          <Suspense fallback={null}>
+            <GlobalTimer />
+          </Suspense>
           {children}
         </ModalProvider>
       </body>
