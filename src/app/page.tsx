@@ -16,7 +16,7 @@ export default function LandingPage() {
         <div className="nav-links">
           <Link href="/teams">TEAMS</Link>
           <Link href="/drivers">RACERS</Link>
-          <Link href="#">RULES</Link>
+          <Link href="/rules">RULES</Link>
           <Link href="/login">LIVE BET</Link>
         </div>
       </nav>
@@ -40,7 +40,7 @@ export default function LandingPage() {
           <Link href="/login" className="btn-soulgrid-primary">
             ENTER LIVE BET &gt;&gt;
           </Link>
-          <Link href="#" className="btn-soulgrid-secondary">
+          <Link href="/rules" className="btn-soulgrid-secondary">
             RULES
           </Link>
         </div>

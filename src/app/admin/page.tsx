@@ -95,7 +95,7 @@ export default function AdminPage() {
         .from('audit_logs')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(50);
+        .limit(2000);
         
       if (allLogs) setLogs(allLogs);
 
@@ -531,28 +531,35 @@ export default function AdminPage() {
               <thead>
                 <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', textAlign: 'left' }}>
                   <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)' }}>TIMESTAMP</th>
+                  <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)' }}>ROLE</th>
+                  <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)' }}>USER</th>
                   <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)' }}>ACTION</th>
                   <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)' }}>DETAILS</th>
-                  <th className="text-mono" style={{ padding: '1rem', color: 'var(--text-muted)' }}>ACTOR_ID</th>
                 </tr>
               </thead>
               <tbody>
-                {logs.map(log => (
-                  <tr key={log.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    <td className="text-mono" style={{ padding: '1rem', fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)' }}>
-                      {new Date(log.created_at).toLocaleString()}
-                    </td>
-                    <td className="text-mono" style={{ padding: '1rem', color: '#ff2a2a', fontWeight: 'bold' }}>
-                      {log.action}
-                    </td>
-                    <td style={{ padding: '1rem', fontSize: '0.9rem' }}>
-                      {log.details}
-                    </td>
-                    <td className="text-mono" style={{ padding: '1rem', fontSize: '0.65rem', color: 'rgba(255,255,255,0.3)' }}>
-                      {log.user_id}
-                    </td>
-                  </tr>
-                ))}
+                {logs.map(log => {
+                  const userProfile = profiles.find(p => p.id === log.user_id);
+                  return (
+                    <tr key={log.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <td className="text-mono" style={{ padding: '1rem', fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)' }}>
+                        {new Date(log.created_at).toLocaleString()}
+                      </td>
+                      <td className="text-mono" style={{ padding: '1rem', color: 'var(--accent-primary)', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                        {userProfile?.role || 'SYSTEM'}
+                      </td>
+                      <td className="text-mono" style={{ padding: '1rem', color: '#fff' }}>
+                        {userProfile?.login_id || log.user_id}
+                      </td>
+                      <td className="text-mono" style={{ padding: '1rem', color: '#ff2a2a', fontWeight: 'bold' }}>
+                        {log.action}
+                      </td>
+                      <td style={{ padding: '1rem', fontSize: '0.9rem' }}>
+                        {log.details}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
