@@ -34,6 +34,7 @@ export default function StreamerPanel() {
   const [isScrubbing, setIsScrubbing] = useState(false);
   const [videoSeekData, setVideoSeekData] = useState<{ time: number, nonce: number } | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [scrollData, setScrollData] = useState<{ y: number, nonce: number } | null>(null);
 
   // Timer state
   const [teamEnd, setTeamEnd] = useState<Date | null>(null);
@@ -95,7 +96,7 @@ export default function StreamerPanel() {
         channel.send({
           type: 'broadcast',
           event: 'update-controls',
-          payload: { showRaceLeaderboard, showBetLeaderboard, showCenterTicker, showTimers, tickerText, showProfile, profileType, profileId, streamUrl, showStreamPreview, videoPlaying, videoMuted, videoVolume, videoQuality, ytControls, ytModestBranding, ytRel, ytAnnotations, videoSeekData }
+          payload: { showRaceLeaderboard, showBetLeaderboard, showCenterTicker, showTimers, tickerText, showProfile, profileType, profileId, streamUrl, showStreamPreview, videoPlaying, videoMuted, videoVolume, videoQuality, ytControls, ytModestBranding, ytRel, ytAnnotations, videoSeekData, scrollData }
         });
       }
     });
@@ -106,7 +107,28 @@ export default function StreamerPanel() {
     return () => { 
       supabase.removeChannel(channel); 
     };
-  }, [showRaceLeaderboard, showBetLeaderboard, showCenterTicker, showTimers, tickerText, showProfile, profileType, profileId, streamUrl, showStreamPreview, videoPlaying, videoMuted, videoVolume, videoQuality, ytControls, ytModestBranding, ytRel, ytAnnotations, videoSeekData, isLoading]);
+  }, [showRaceLeaderboard, showBetLeaderboard, showCenterTicker, showTimers, tickerText, showProfile, profileType, profileId, streamUrl, showStreamPreview, videoPlaying, videoMuted, videoVolume, videoQuality, ytControls, ytModestBranding, ytRel, ytAnnotations, videoSeekData, scrollData, isLoading]);
+
+  // Scroll Sync Broadcaster
+  useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+    const handleScroll = () => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        const scrollTop = window.scrollY;
+        const docHeight = document.documentElement.scrollHeight;
+        const winHeight = window.innerHeight;
+        const scrollPercent = (docHeight - winHeight) > 0 ? scrollTop / (docHeight - winHeight) : 0;
+        setScrollData({ y: scrollPercent, nonce: Date.now() });
+      }, 100); // 10fps throttle for smooth but safe syncing
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      clearTimeout(timeoutId);
+    };
+  }, []);
 
   // Fetch and subscribe to timer end values
   useEffect(() => {

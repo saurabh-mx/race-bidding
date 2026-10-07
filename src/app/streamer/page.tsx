@@ -31,6 +31,7 @@ export default function StreamerMode() {
   const [ytAnnotations, setYtAnnotations] = useState(false);
   
   const [videoSeekData, setVideoSeekData] = useState<{ time: number, nonce: number } | null>(null);
+  const [scrollData, setScrollData] = useState<{ y: number, nonce: number } | null>(null);
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -82,6 +83,7 @@ export default function StreamerMode() {
           if (payload.payload.ytAnnotations !== undefined) setYtAnnotations(payload.payload.ytAnnotations);
           
           if (payload.payload.videoSeekData !== undefined) setVideoSeekData(payload.payload.videoSeekData);
+          if (payload.payload.scrollData !== undefined) setScrollData(payload.payload.scrollData);
 
           // Dispatch locally so the GlobalTimer (rendered in layout) can pick up the state change safely
           if (payload.payload.showTimers !== undefined) {
@@ -136,6 +138,17 @@ export default function StreamerMode() {
     }
   }, [videoSeekData, streamUrl]);
 
+  useEffect(() => {
+    if (scrollData) {
+      const docHeight = document.documentElement.scrollHeight;
+      const winHeight = window.innerHeight;
+      if (docHeight > winHeight) {
+        const targetScroll = (docHeight - winHeight) * scrollData.y;
+        window.scrollTo({ top: targetScroll, behavior: 'smooth' });
+      }
+    }
+  }, [scrollData]);
+
   const hasLeft = showRaceLeaderboard;
   const hasRight = showBetLeaderboard;
 
@@ -151,9 +164,14 @@ export default function StreamerMode() {
   }
 
   return (
+    <>
+    <style>{`
+      ::-webkit-scrollbar { display: none; }
+      html, body { -ms-overflow-style: none; scrollbar-width: none; }
+    `}</style>
     <div style={{ 
       width: '1920px',
-      height: '1080px',
+      minHeight: '1080px',
       boxSizing: 'border-box',
       position: 'relative',
       background: 'transparent', // OBS transparent capable
@@ -166,7 +184,6 @@ export default function StreamerMode() {
       fontFamily: 'var(--font-mono)',
       pointerEvents: 'none', // Disables all interactions (hover, click, scroll)
       userSelect: 'none',    // Prevents text highlighting
-      overflow: 'hidden',    // Prevents scrollbars from appearing on OBS
       transition: 'grid-template-columns 0.6s cubic-bezier(0.16, 1, 0.3, 1), gap 0.6s'
     }}>
       {/* LEFT COLUMN: RACE LEADERBOARD */}
@@ -273,11 +290,11 @@ export default function StreamerMode() {
         opacity: showBetLeaderboard ? 0.95 : 0, 
         transition: 'opacity 0.4s, transform 0.6s', 
         filter: 'drop-shadow(0 0 20px rgba(242, 24, 24, 0.2))',
-        transform: showBetLeaderboard ? 'translateX(0)' : 'translateX(50px)',
-        overflow: 'hidden'
+        transform: showBetLeaderboard ? 'translateX(0)' : 'translateX(50px)'
       }}>
         <BetLeaderboard />
       </div>
     </div>
+    </>
   );
 }
