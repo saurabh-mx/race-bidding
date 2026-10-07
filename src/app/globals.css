@@ -59,16 +59,7 @@ h1, h2, h3, h4, h5, h6 {
   overflow: hidden;
 }
 
-/* Subtle corner accent for panels */
-.glass-panel::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 20px;
-  height: 20px;
-  background: linear-gradient(135deg, transparent 50%, rgba(255,255,255,0.1) 50%);
-}
+/* Subtle corner accent removed for cleaner UI */
 
 .glass-header {
   display: flex;

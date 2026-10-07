@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
@@ -18,6 +18,22 @@ export default function StreamerPanel() {
   const [showCenterTicker, setShowCenterTicker] = useState(true);
   const [showTimers, setShowTimers] = useState(true);
   const [tickerText, setTickerText] = useState('STAND BY FOR SECURE TRANSMISSION');
+  const [streamUrl, setStreamUrl] = useState('');
+  const [showStreamPreview, setShowStreamPreview] = useState(false);
+  const [videoPlaying, setVideoPlaying] = useState(true);
+  const [videoMuted, setVideoMuted] = useState(false);
+  const [videoVolume, setVideoVolume] = useState(100);
+  const [videoQuality, setVideoQuality] = useState('auto');
+  const [ytControls, setYtControls] = useState(false);
+  const [ytModestBranding, setYtModestBranding] = useState(true);
+  const [ytRel, setYtRel] = useState(false);
+  const [ytAnnotations, setYtAnnotations] = useState(false);
+  
+  const [videoDuration, setVideoDuration] = useState(0);
+  const [videoCurrentTime, setVideoCurrentTime] = useState(0);
+  const [isScrubbing, setIsScrubbing] = useState(false);
+  const [videoSeekData, setVideoSeekData] = useState<{ time: number, nonce: number } | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   // Timer state
   const [teamEnd, setTeamEnd] = useState<Date | null>(null);
@@ -79,7 +95,7 @@ export default function StreamerPanel() {
         channel.send({
           type: 'broadcast',
           event: 'update-controls',
-          payload: { showRaceLeaderboard, showBetLeaderboard, showCenterTicker, showTimers, tickerText, showProfile, profileType, profileId }
+          payload: { showRaceLeaderboard, showBetLeaderboard, showCenterTicker, showTimers, tickerText, showProfile, profileType, profileId, streamUrl, showStreamPreview, videoPlaying, videoMuted, videoVolume, videoQuality, ytControls, ytModestBranding, ytRel, ytAnnotations, videoSeekData }
         });
       }
     });
@@ -90,7 +106,7 @@ export default function StreamerPanel() {
     return () => { 
       supabase.removeChannel(channel); 
     };
-  }, [showRaceLeaderboard, showBetLeaderboard, showCenterTicker, showTimers, tickerText, showProfile, profileType, profileId, isLoading]);
+  }, [showRaceLeaderboard, showBetLeaderboard, showCenterTicker, showTimers, tickerText, showProfile, profileType, profileId, streamUrl, showStreamPreview, videoPlaying, videoMuted, videoVolume, videoQuality, ytControls, ytModestBranding, ytRel, ytAnnotations, videoSeekData, isLoading]);
 
   // Fetch and subscribe to timer end values
   useEffect(() => {
@@ -126,10 +142,71 @@ export default function StreamerPanel() {
   }, [teamEnd, indEnd, monthlyEnd]);
 
   const formatTime = (secs: number) => {
-    const m = Math.floor(secs / 60);
+    if (isNaN(secs)) return '00:00';
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
     const s = secs % 60;
+    if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
+
+  const getEmbedUrl = (url: string) => {
+    if (!url) return '';
+    try {
+      const urlObj = new URL(url);
+      if (urlObj.hostname.includes('youtube.com') || urlObj.hostname.includes('youtu.be')) {
+        let videoId = '';
+        if (urlObj.hostname.includes('youtu.be')) {
+          videoId = urlObj.pathname.slice(1);
+        } else if (urlObj.pathname.startsWith('/live/')) {
+          videoId = urlObj.pathname.split('/')[2];
+        } else {
+          videoId = urlObj.searchParams.get('v') || '';
+        }
+        return videoId ? `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=0&controls=${ytControls ? 1 : 0}&enablejsapi=1&modestbranding=${ytModestBranding ? 1 : 0}&rel=${ytRel ? 1 : 0}&iv_load_policy=${ytAnnotations ? 1 : 3}&fs=0&disablekb=1` : url;
+      } else if (urlObj.hostname.includes('kick.com') && !urlObj.hostname.includes('player.kick.com')) {
+        const parts = urlObj.pathname.split('/').filter(Boolean);
+        if (parts.length > 0) {
+           return `https://player.kick.com/${parts[0]}?autoplay=true&muted=true`;
+        }
+      }
+    } catch(e) {
+      return url;
+    }
+    return url;
+  };
+
+  useEffect(() => {
+    const handleMessage = (e: MessageEvent) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.event === 'infoDelivery' && data.info) {
+          if (data.info.duration) setVideoDuration(data.info.duration);
+          if (data.info.currentTime && !isScrubbing) setVideoCurrentTime(data.info.currentTime);
+        }
+      } catch (err) {}
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [isScrubbing]);
+
+  useEffect(() => {
+    if (!streamUrl) return;
+    const interval = setInterval(() => {
+      if (iframeRef.current && iframeRef.current.contentWindow) {
+        iframeRef.current.contentWindow.postMessage(JSON.stringify({ event: 'listening' }), '*');
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [streamUrl]);
+
+  useEffect(() => {
+    if (videoSeekData && iframeRef.current && iframeRef.current.contentWindow) {
+      if (streamUrl.includes('youtube.com') || streamUrl.includes('youtu.be')) {
+        iframeRef.current.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'seekTo', args: [videoSeekData.time, true] }), '*');
+      }
+    }
+  }, [videoSeekData, streamUrl]);
 
   const handleSetTimer = async (minutes: number, type: 'TEAM' | 'INDIVIDUAL' | 'MONTHLY') => {
     const currentEnd = type === 'TEAM' ? (teamEnd ? teamEnd.getTime() : Date.now()) : type === 'MONTHLY' ? (monthlyEnd ? monthlyEnd.getTime() : Date.now()) : (indEnd ? indEnd.getTime() : Date.now());
@@ -154,224 +231,263 @@ export default function StreamerPanel() {
   return (
     <div style={{ 
       minHeight: '100vh', 
-      backgroundImage: 'radial-gradient(circle at center, rgba(30, 5, 5, 0.4) 0%, rgba(5, 2, 2, 0.95) 100%), repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.2) 2px, rgba(0,0,0,0.2) 4px)',
-      padding: '2rem',
+      backgroundImage: 'radial-gradient(circle at center, rgba(15, 15, 20, 0.95) 0%, rgba(5, 5, 8, 1) 100%)',
+      padding: '1.5rem',
       fontFamily: 'var(--font-mono)',
       position: 'relative'
     }}>
       
-      {/* HEADER CONTROLS (Only visible in panel) */}
-      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: '1rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,0,0,0.8)', borderBottom: '2px solid var(--accent-primary)', zIndex: 100 }}>
-        <div>
-          <h1 className="title-gradient" style={{ fontSize: '1.5rem', margin: 0, textTransform: 'uppercase' }}>Streamer Panel (Director Mode)</h1>
-          <p className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', margin: 0 }}>CHANGES SYNC IN REAL-TIME TO STREAMER VIEW</p>
+      {/* HEADER */}
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: '1rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,0,0,0.8)', borderBottom: '1px solid rgba(0,255,136,0.2)', zIndex: 100, backdropFilter: 'blur(10px)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#00ff88', boxShadow: '0 0 10px #00ff88' }} />
+          <div>
+            <h1 style={{ fontSize: '1.2rem', margin: 0, color: '#fff', letterSpacing: '2px', fontWeight: 900 }}>DIRECTOR CONSOLE</h1>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.7rem', margin: 0, letterSpacing: '1px' }}>REAL-TIME OBS SYNC</p>
+          </div>
         </div>
-        <Link href="/dashboard" className="btn-secondary" style={{ padding: '0.5rem 1rem', textDecoration: 'none', fontSize: '0.85rem' }}>
-          RETURN TO DASHBOARD
+        <Link href="/dashboard" className="btn-secondary" style={{ padding: '0.4rem 1rem', textDecoration: 'none', fontSize: '0.75rem' }}>
+          EXIT TO DASHBOARD
         </Link>
       </div>
 
-      <div style={{ 
-        display: 'grid',
-        gridTemplateColumns: 'minmax(350px, 400px) 1fr minmax(350px, 400px)',
-        gap: '2rem',
-        marginTop: '60px' // offset for header
-      }}>
+      <div style={{ marginTop: '70px', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         
-        {/* LEFT COLUMN: RACE LEADERBOARD CONTROL */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <div style={{ background: 'rgba(0,0,0,0.9)', border: '1px dashed #00ff88', padding: '1rem', borderRadius: '8px' }}>
-            <AccessibleButton 
-              variant={showRaceLeaderboard ? 'primary' : 'secondary'}
-              onClick={() => setShowRaceLeaderboard(!showRaceLeaderboard)}
-              style={{ width: '100%' }}
-            >
-              {showRaceLeaderboard ? 'HIDE ON STREAM' : 'SHOW ON STREAM'}
-            </AccessibleButton>
-          </div>
-          <div style={{ opacity: showRaceLeaderboard ? 0.95 : 0.3, filter: 'drop-shadow(0 0 20px rgba(242, 24, 24, 0.2))' }}>
-            <Leaderboard />
-          </div>
-        </div>
-
-        {/* CENTER: MAIN LIVE STATS & CLOCK CONTROL */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', paddingTop: '2rem' }}>
+        {/* TOP ROW: TIMERS & GLOBALS */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem' }}>
           
-          {/* TIMER CONTROLS */}
-          <div style={{ background: 'rgba(0,0,0,0.9)', border: '1px dashed #00ff88', padding: '1.5rem', borderRadius: '8px', marginBottom: '1rem', width: '100%' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h3 className="text-mono" style={{ color: '#00ff88', margin: 0 }}>TIMER CONTROLS</h3>
-              <AccessibleButton
-                variant={showTimers ? 'primary' : 'secondary'}
-                onClick={() => setShowTimers(!showTimers)}
-                style={{ padding: '0.4rem 1rem', fontSize: '0.75rem' }}
-              >
-                {showTimers ? 'HIDE ON STREAM' : 'SHOW ON STREAM'}
-              </AccessibleButton>
-            </div>
-
-            {/* Timer Cards Grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
-              {/* TEAM TIMER */}
-              <div style={{ background: teamTimeLeft > 0 ? 'rgba(242,24,24,0.15)' : 'rgba(255,255,255,0.03)', border: teamTimeLeft > 0 ? '1px solid rgba(242,24,24,0.5)' : '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
-                <p className="text-mono" style={{ color: teamTimeLeft > 0 ? 'var(--accent-primary)' : '#666', fontSize: '0.7rem', letterSpacing: '2px', margin: 0 }}>TEAM</p>
-                <p style={{ fontSize: '1.5rem', fontWeight: 900, color: teamTimeLeft > 0 ? '#fff' : '#444', fontFamily: 'monospace', margin: 0 }}>
-                  {teamTimeLeft > 0 ? formatTime(teamTimeLeft) : 'CLOSED'}
-                </p>
-                <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap', justifyContent: 'center' }}>
-                  <button onClick={() => handleSetTimer(5, 'TEAM')} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.6rem' }}>+5M</button>
-                  <button onClick={() => handleSetTimer(60, 'TEAM')} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.6rem' }}>+1H</button>
-                  <button onClick={() => handleStopTimer('TEAM')} className="btn-primary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.6rem' }}>STOP</button>
-                </div>
+          <div className="glass-panel" style={{ padding: '1rem', borderTop: '3px solid #ff0055' }}>
+            <h3 style={{ margin: '0 0 1rem 0', fontSize: '0.75rem', color: '#ff0055', letterSpacing: '2px' }}>TEAM WINDOW</h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontSize: '2rem', fontWeight: 900, color: teamTimeLeft > 0 ? '#fff' : '#444', fontFamily: 'monospace' }}>
+                {teamTimeLeft > 0 ? formatTime(teamTimeLeft) : 'CLOSED'}
               </div>
-
-              {/* RACER TIMER */}
-              <div style={{ background: indTimeLeft > 0 ? 'rgba(0,255,136,0.1)' : 'rgba(255,255,255,0.03)', border: indTimeLeft > 0 ? '1px solid rgba(0,255,136,0.4)' : '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
-                <p className="text-mono" style={{ color: indTimeLeft > 0 ? '#00ff88' : '#666', fontSize: '0.7rem', letterSpacing: '2px', margin: 0 }}>RACER</p>
-                <p style={{ fontSize: '1.5rem', fontWeight: 900, color: indTimeLeft > 0 ? '#fff' : '#444', fontFamily: 'monospace', margin: 0 }}>
-                  {indTimeLeft > 0 ? formatTime(indTimeLeft) : 'CLOSED'}
-                </p>
-                <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap', justifyContent: 'center' }}>
-                  <button onClick={() => handleSetTimer(5, 'INDIVIDUAL')} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.6rem' }}>+5M</button>
-                  <button onClick={() => handleSetTimer(60, 'INDIVIDUAL')} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.6rem' }}>+1H</button>
-                  <button onClick={() => handleStopTimer('INDIVIDUAL')} className="btn-primary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.6rem' }}>STOP</button>
-                </div>
-              </div>
-
-              {/* MONTHLY TIMER */}
-              <div style={{ background: monthlyTimeLeft > 0 ? 'rgba(255,0,255,0.1)' : 'rgba(255,255,255,0.03)', border: monthlyTimeLeft > 0 ? '1px solid rgba(255,0,255,0.4)' : '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
-                <p className="text-mono" style={{ color: monthlyTimeLeft > 0 ? '#ff00ff' : '#666', fontSize: '0.7rem', letterSpacing: '2px', margin: 0 }}>MONTHLY</p>
-                <p style={{ fontSize: '1.5rem', fontWeight: 900, color: monthlyTimeLeft > 0 ? '#fff' : '#444', fontFamily: 'monospace', margin: 0 }}>
-                  {monthlyTimeLeft > 0 ? formatTime(monthlyTimeLeft) : 'CLOSED'}
-                </p>
-                <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap', justifyContent: 'center' }}>
-                  <button onClick={() => handleSetTimer(5, 'MONTHLY')} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.6rem' }}>+5M</button>
-                  <button onClick={() => handleSetTimer(60, 'MONTHLY')} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.6rem' }}>+1H</button>
-                  <button onClick={() => handleStopTimer('MONTHLY')} className="btn-primary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.6rem' }}>STOP</button>
-                </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                <button onClick={() => handleSetTimer(5, 'TEAM')} className="btn-secondary" style={{ fontSize: '0.6rem', padding: '0.25rem 0.5rem' }}>+5M</button>
+                <button onClick={() => handleStopTimer('TEAM')} className="btn-primary" style={{ fontSize: '0.6rem', padding: '0.25rem 0.5rem' }}>STOP</button>
               </div>
             </div>
           </div>
 
-          <div style={{ background: 'rgba(0,0,0,0.9)', border: '1px dashed #00ff88', padding: '1.5rem', borderRadius: '8px', width: '100%', marginBottom: '1rem' }}>
-            <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end' }}>
-              <div style={{ flex: 1 }}>
-                <AccessibleInput 
-                  label="TICKER TEXT OVERRIDE"
-                  id="tickerText"
-                  value={tickerText}
-                  onChange={(e: any) => setTickerText(e.target.value)}
-                  placeholder="Enter custom ticker message..."
-                />
+          <div className="glass-panel" style={{ padding: '1rem', borderTop: '3px solid #00ff88' }}>
+            <h3 style={{ margin: '0 0 1rem 0', fontSize: '0.75rem', color: '#00ff88', letterSpacing: '2px' }}>RACER WINDOW</h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontSize: '2rem', fontWeight: 900, color: indTimeLeft > 0 ? '#fff' : '#444', fontFamily: 'monospace' }}>
+                {indTimeLeft > 0 ? formatTime(indTimeLeft) : 'CLOSED'}
               </div>
-              <AccessibleButton 
-                variant={showCenterTicker ? 'primary' : 'secondary'}
-                onClick={() => setShowCenterTicker(!showCenterTicker)}
-                style={{ marginBottom: '24px', height: '48px' }} // Align with input
-              >
-                {showCenterTicker ? 'HIDE' : 'SHOW'}
-              </AccessibleButton>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                <button onClick={() => handleSetTimer(5, 'INDIVIDUAL')} className="btn-secondary" style={{ fontSize: '0.6rem', padding: '0.25rem 0.5rem' }}>+5M</button>
+                <button onClick={() => handleStopTimer('INDIVIDUAL')} className="btn-primary" style={{ fontSize: '0.6rem', padding: '0.25rem 0.5rem' }}>STOP</button>
+              </div>
             </div>
           </div>
 
-          <div className="glass-panel" style={{ 
-            padding: '2rem', 
-            display: 'flex', 
-            flexDirection: 'column', 
-            alignItems: 'center', 
-            justifyContent: 'center',
-            width: '100%',
-            borderLeft: '4px solid var(--accent-primary)',
-            borderRight: '4px solid var(--accent-primary)',
-            background: 'linear-gradient(90deg, rgba(242,24,24,0.1) 0%, rgba(0,0,0,0.8) 20%, rgba(0,0,0,0.8) 80%, rgba(242,24,24,0.1) 100%)',
-            opacity: showCenterTicker ? 1 : 0.3,
-            marginBottom: '2rem'
-          }}>
-            <p className="text-mono" style={{ color: 'var(--accent-primary)', fontSize: '1.5rem', margin: 0, letterSpacing: '6px', textAlign: 'center' }}>
-              [ {tickerText} ]
-            </p>
+          <div className="glass-panel" style={{ padding: '1rem', borderTop: '3px solid #ff00ff' }}>
+            <h3 style={{ margin: '0 0 1rem 0', fontSize: '0.75rem', color: '#ff00ff', letterSpacing: '2px' }}>MONTHLY WINDOW</h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontSize: '2rem', fontWeight: 900, color: monthlyTimeLeft > 0 ? '#fff' : '#444', fontFamily: 'monospace' }}>
+                {monthlyTimeLeft > 0 ? formatTime(monthlyTimeLeft) : 'CLOSED'}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                <button onClick={() => handleSetTimer(5, 'MONTHLY')} className="btn-secondary" style={{ fontSize: '0.6rem', padding: '0.25rem 0.5rem' }}>+5M</button>
+                <button onClick={() => handleStopTimer('MONTHLY')} className="btn-primary" style={{ fontSize: '0.6rem', padding: '0.25rem 0.5rem' }}>STOP</button>
+              </div>
+            </div>
           </div>
 
-          {/* Profile Showcase Control */}
-          <div style={{ background: 'rgba(0,0,0,0.9)', border: '1px dashed #00ff88', padding: '1.5rem', borderRadius: '8px', width: '100%', marginBottom: '1rem' }}>
-            <h3 className="text-mono" style={{ color: '#00ff88', marginBottom: '1rem', marginTop: 0 }}>PROFILE SHOWCASE OVERLAY</h3>
-            
-            <div style={{ marginBottom: '0.75rem' }}>
-              <AccessibleSelect 
-                label="PROFILE TYPE"
-                id="profileType"
-                value={profileType} 
-                onChange={(e: any) => {
-                  setProfileType(e.target.value);
-                  setProfileId(e.target.value === 'TEAM' ? (teams[0]?.id || '') : (racers[0]?.id || ''));
-                }}
-              >
-                <option value="TEAM">TEAM</option>
-                <option value="RACER">RACER</option>
-              </AccessibleSelect>
-            </div>
-
-            <div style={{ marginBottom: '0.75rem' }}>
-              <AccessibleSelect 
-                label="SELECT ENTITY"
-                id="profileId"
-                value={profileId} 
-                onChange={(e: any) => setProfileId(e.target.value)}
-              >
-                {profileType === 'TEAM' 
-                  ? teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)
-                  : racers.map(r => <option key={r.id} value={r.id}>{r.name}</option>)
-                }
-              </AccessibleSelect>
-            </div>
-
-            <AccessibleButton 
-              variant={showProfile ? 'primary' : 'secondary'}
-              onClick={() => setShowProfile(!showProfile)}
-              style={{ width: '100%' }}
+          <div className="glass-panel" style={{ padding: '1rem', borderTop: '3px solid #00aaff', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '0.75rem', color: '#00aaff', letterSpacing: '2px' }}>GLOBAL CONTROLS</h3>
+            <AccessibleButton
+              variant={showTimers ? 'primary' : 'secondary'}
+              onClick={() => setShowTimers(!showTimers)}
+              style={{ padding: '0.4rem', fontSize: '0.7rem', width: '100%', marginBottom: '0.5rem' }}
             >
-              {showProfile ? 'HIDE PROFILE ON STREAM' : 'SHOW PROFILE ON STREAM'}
+              {showTimers ? 'HIDE TIMERS' : 'SHOW TIMERS'}
             </AccessibleButton>
-          </div>
-
-          <div className="glass-panel" style={{ 
-            padding: '2rem',
-            width: '100%',
-            opacity: showProfile ? 1 : 0.3,
-            borderLeft: '4px solid #00ff88'
-          }}>
-            <h2 className="title-gradient" style={{ textAlign: 'center', margin: 0 }}>PROFILE PREVIEW</h2>
-            {profileId ? (
-              <div style={{ width: '100%', height: '800px', marginTop: '1rem', overflow: 'hidden' }}>
-                <iframe 
-                  src={`/racer/${profileId}?stream=true&director=true`}
-                  style={{ width: '100%', height: '100%', border: 'none', background: 'transparent' }}
-                  title="Profile Preview"
-                />
-              </div>
-            ) : (
-              <p className="text-mono" style={{ textAlign: 'center', color: '#888', marginTop: '1rem' }}>
-                Select a profile above. It will render fully in the OBS Streamer view.
-              </p>
-            )}
+            <AccessibleButton 
+              variant={showCenterTicker ? 'primary' : 'secondary'}
+              onClick={() => setShowCenterTicker(!showCenterTicker)}
+              style={{ padding: '0.4rem', fontSize: '0.7rem', width: '100%' }}
+            >
+              {showCenterTicker ? 'HIDE TICKER' : 'SHOW TICKER'}
+            </AccessibleButton>
           </div>
 
         </div>
 
-        {/* RIGHT COLUMN: BET LEADERBOARD CONTROL */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <div style={{ background: 'rgba(0,0,0,0.9)', border: '1px dashed #00ff88', padding: '1rem', borderRadius: '8px' }}>
-            <AccessibleButton 
-              variant={showBetLeaderboard ? 'primary' : 'secondary'}
-              onClick={() => setShowBetLeaderboard(!showBetLeaderboard)}
-              style={{ width: '100%' }}
-            >
-              {showBetLeaderboard ? 'HIDE ON STREAM' : 'SHOW ON STREAM'}
-            </AccessibleButton>
+        {/* MIDDLE ROW: 3 COLUMNS */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 350px) 1fr minmax(300px, 350px)', gap: '1rem' }}>
+          
+          {/* LEFT: LEADERBOARDS & TICKER */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div className="glass-panel" style={{ padding: '1rem', borderTop: '3px solid #00ff88' }}>
+              <h3 style={{ margin: '0 0 1rem 0', fontSize: '0.75rem', color: '#00ff88', letterSpacing: '2px' }}>TICKER OVERRIDE</h3>
+              <AccessibleInput 
+                id="tickerText"
+                value={tickerText}
+                onChange={(e: any) => setTickerText(e.target.value)}
+                placeholder="Custom ticker message..."
+              />
+            </div>
+            
+            <div className="glass-panel" style={{ padding: '1rem', borderTop: '3px solid #ff0055', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ margin: 0, fontSize: '0.75rem', color: '#ff0055', letterSpacing: '2px' }}>RACE LEADERBOARD</h3>
+                <AccessibleButton variant={showRaceLeaderboard ? 'primary' : 'secondary'} onClick={() => setShowRaceLeaderboard(!showRaceLeaderboard)} style={{ fontSize: '0.6rem', padding: '0.2rem 0.5rem' }}>
+                  {showRaceLeaderboard ? 'HIDE' : 'SHOW'}
+                </AccessibleButton>
+              </div>
+              <div style={{ opacity: showRaceLeaderboard ? 1 : 0.3, transform: 'scale(0.9)', transformOrigin: 'top left', width: '110%' }}>
+                <Leaderboard />
+              </div>
+            </div>
           </div>
-          <div style={{ opacity: showBetLeaderboard ? 0.95 : 0.3, filter: 'drop-shadow(0 0 20px rgba(242, 24, 24, 0.2))' }}>
-            <BetLeaderboard />
+
+          {/* CENTER: VIDEO INJECTOR */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div className="glass-panel" style={{ padding: '1rem', borderTop: '3px solid #00aaff', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ margin: 0, fontSize: '0.85rem', color: '#00aaff', letterSpacing: '2px' }}>STREAM INJECTOR</h3>
+                <AccessibleButton variant={showStreamPreview ? 'primary' : 'secondary'} onClick={() => setShowStreamPreview(!showStreamPreview)} style={{ fontSize: '0.65rem', padding: '0.3rem 0.75rem' }}>
+                  {showStreamPreview ? 'LIVE ON STREAM' : 'HIDDEN'}
+                </AccessibleButton>
+              </div>
+
+              {/* Video Preview Box */}
+              <div style={{ width: '100%', aspectRatio: '16/9', background: '#000', borderRadius: '4px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)', position: 'relative' }}>
+                {streamUrl ? (
+                  <iframe 
+                    ref={iframeRef}
+                    src={getEmbedUrl(streamUrl)}
+                    style={{ width: '100%', height: '100%', border: 'none' }}
+                    title="Video Preview"
+                    allow="autoplay; encrypted-media; fullscreen"
+                  />
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#666', fontSize: '0.8rem' }}>
+                    NO VIDEO SOURCE
+                  </div>
+                )}
+                {!showStreamPreview && streamUrl && (
+                  <div style={{ position: 'absolute', top: '10px', right: '10px', background: 'rgba(242,24,24,0.8)', color: '#fff', fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>OFFLINE</div>
+                )}
+              </div>
+
+              {/* URL Input */}
+              <div>
+                <AccessibleInput 
+                  id="streamUrl"
+                  value={streamUrl} 
+                  onChange={(e: any) => setStreamUrl(e.target.value)}
+                  placeholder="Paste YouTube or Kick URL..."
+                />
+              </div>
+
+              {/* Media Controls */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                <AccessibleButton variant={videoPlaying ? 'primary' : 'secondary'} onClick={() => setVideoPlaying(true)}>PLAY</AccessibleButton>
+                <AccessibleButton variant={!videoPlaying ? 'primary' : 'secondary'} onClick={() => setVideoPlaying(false)}>PAUSE</AccessibleButton>
+              </div>
+
+              {/* Scrub Bar */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', color: '#888', fontFamily: 'monospace' }}>
+                  <span>{formatTime(Math.floor(videoCurrentTime))}</span>
+                  <span>{formatTime(Math.floor(videoDuration))}</span>
+                </div>
+                <input 
+                  type="range" min="0" max={videoDuration || 100} value={videoCurrentTime} 
+                  onMouseDown={() => setIsScrubbing(true)}
+                  onChange={(e) => setVideoCurrentTime(Number(e.target.value))}
+                  onMouseUp={(e) => {
+                    setIsScrubbing(false);
+                    setVideoSeekData({ time: Number((e.target as HTMLInputElement).value), nonce: Date.now() });
+                  }}
+                  style={{ width: '100%', accentColor: '#00aaff', cursor: 'pointer' }}
+                />
+              </div>
+
+              {/* Audio & Quality */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: '1rem', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: '0.25rem' }}>
+                  <button onClick={() => setVideoMuted(false)} className={!videoMuted ? 'btn-primary' : 'btn-secondary'} style={{ padding: '0.4rem', fontSize: '0.7rem', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.2)' }}>🔊</button>
+                  <button onClick={() => setVideoMuted(true)} className={videoMuted ? 'btn-primary' : 'btn-secondary'} style={{ padding: '0.4rem', fontSize: '0.7rem', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.2)' }}>🔇</button>
+                </div>
+                <input 
+                  type="range" min="0" max="100" value={videoVolume} 
+                  onChange={(e) => setVideoVolume(Number(e.target.value))}
+                  style={{ width: '100%', accentColor: '#00aaff', cursor: 'pointer' }}
+                />
+                <select 
+                  value={videoQuality}
+                  onChange={(e) => setVideoQuality(e.target.value)}
+                  style={{ background: 'rgba(0,0,0,0.5)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', padding: '0.4rem', borderRadius: '4px', fontSize: '0.7rem', outline: 'none' }}
+                >
+                  <option value="auto">Auto</option>
+                  <option value="hd1080">1080p</option>
+                  <option value="hd720">720p</option>
+                </select>
+              </div>
+
+              {/* Advanced Toggles */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '1rem' }}>
+                <button onClick={() => setYtControls(!ytControls)} className={ytControls ? 'btn-primary' : 'btn-secondary'} style={{ fontSize: '0.65rem', padding: '0.4rem', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)' }}>{ytControls ? 'CONTROLS: ON' : 'CONTROLS: OFF'}</button>
+                <button onClick={() => setYtModestBranding(!ytModestBranding)} className={ytModestBranding ? 'btn-primary' : 'btn-secondary'} style={{ fontSize: '0.65rem', padding: '0.4rem', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)' }}>{ytModestBranding ? 'MIN LOGO: ON' : 'MIN LOGO: OFF'}</button>
+                <button onClick={() => setYtRel(!ytRel)} className={ytRel ? 'btn-primary' : 'btn-secondary'} style={{ fontSize: '0.65rem', padding: '0.4rem', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)' }}>{ytRel ? 'RELATED: ON' : 'RELATED: OFF'}</button>
+                <button onClick={() => setYtAnnotations(!ytAnnotations)} className={ytAnnotations ? 'btn-primary' : 'btn-secondary'} style={{ fontSize: '0.65rem', padding: '0.4rem', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)' }}>{ytAnnotations ? 'ANNOTATIONS: ON' : 'ANNOTATIONS: OFF'}</button>
+              </div>
+
+            </div>
           </div>
+
+          {/* RIGHT: BET LEADERBOARD & PROFILE SHOWCASE */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            
+            <div className="glass-panel" style={{ padding: '1rem', borderTop: '3px solid #ff00ff', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ margin: 0, fontSize: '0.75rem', color: '#ff00ff', letterSpacing: '2px' }}>PROFILE SHOWCASE</h3>
+                <AccessibleButton variant={showProfile ? 'primary' : 'secondary'} onClick={() => setShowProfile(!showProfile)} style={{ fontSize: '0.6rem', padding: '0.2rem 0.5rem' }}>
+                  {showProfile ? 'HIDE' : 'SHOW'}
+                </AccessibleButton>
+              </div>
+              
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <div style={{ flex: 1 }}>
+                  <AccessibleSelect label="TYPE" id="profileType" value={profileType} onChange={(e: any) => { setProfileType(e.target.value); setProfileId(e.target.value === 'TEAM' ? (teams[0]?.id || '') : (racers[0]?.id || '')); }}>
+                    <option value="TEAM">TEAM</option>
+                    <option value="RACER">RACER</option>
+                  </AccessibleSelect>
+                </div>
+                <div style={{ flex: 2 }}>
+                  <AccessibleSelect label="SELECT" id="profileId" value={profileId} onChange={(e: any) => setProfileId(e.target.value)}>
+                    {profileType === 'TEAM' ? teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>) : racers.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                  </AccessibleSelect>
+                </div>
+              </div>
+
+              {profileId && (
+                <div style={{ width: '100%', height: '300px', background: '#000', borderRadius: '4px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)', position: 'relative' }}>
+                  <div style={{ transform: 'scale(0.6)', transformOrigin: 'top left', width: '166%', height: '166%' }}>
+                    <iframe src={`/racer/${profileId}?stream=true&director=true`} style={{ width: '100%', height: '100%', border: 'none' }} title="Profile Preview" />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="glass-panel" style={{ padding: '1rem', borderTop: '3px solid #ffb700', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ margin: 0, fontSize: '0.75rem', color: '#ffb700', letterSpacing: '2px' }}>BET POOLS</h3>
+                <AccessibleButton variant={showBetLeaderboard ? 'primary' : 'secondary'} onClick={() => setShowBetLeaderboard(!showBetLeaderboard)} style={{ fontSize: '0.6rem', padding: '0.2rem 0.5rem' }}>
+                  {showBetLeaderboard ? 'HIDE' : 'SHOW'}
+                </AccessibleButton>
+              </div>
+              <div style={{ opacity: showBetLeaderboard ? 1 : 0.3, transform: 'scale(0.9)', transformOrigin: 'top left', width: '110%' }}>
+                <BetLeaderboard />
+              </div>
+            </div>
+
+          </div>
+
         </div>
       </div>
     </div>

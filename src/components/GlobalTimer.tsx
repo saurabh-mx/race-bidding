@@ -625,9 +625,10 @@ export function GlobalTimer() {
   };
 
   const isStreamerMode = pathname === '/streamer';
+  const isPanelMode = pathname === '/streamer/panel';
   const isStreamIframe = searchParams?.get('stream') === 'true';
   
-  if (isStreamIframe) return null;
+  if (isStreamIframe || isPanelMode) return null;
 
   return (
     <>
