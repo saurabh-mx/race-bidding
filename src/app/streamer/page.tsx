@@ -152,7 +152,10 @@ export default function StreamerMode() {
 
   return (
     <div style={{ 
-      minHeight: '100vh', 
+      width: '1920px',
+      height: '1080px',
+      boxSizing: 'border-box',
+      position: 'relative',
       background: 'transparent', // OBS transparent capable
       backgroundImage: 'radial-gradient(circle at center, rgba(30, 5, 5, 0.4) 0%, rgba(5, 2, 2, 0.95) 100%), repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.2) 2px, rgba(0,0,0,0.2) 4px)',
       padding: '2rem',
