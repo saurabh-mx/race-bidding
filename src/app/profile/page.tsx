@@ -4,15 +4,18 @@ import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { getUnique5DigitId } from '@/lib/betUtils';
 
 type Bid = {
   id: string;
+  ticket_id?: string;
   racer_id: string;
   bidder_name: string;
   amount: number;
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
   result: 'PENDING' | 'WON' | 'LOST';
   payout: number;
+  payout_status?: string;
   created_at: string;
   racer_name?: string;
 };
@@ -52,13 +55,23 @@ export default function UserProfile() {
       }
 
       await fetchMyBids(session.user.id);
+
+      const channel = supabase.channel(`profile_bids_${session.user.id}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'bids', filter: `user_id=eq.${session.user.id}` }, () => {
+          fetchMyBids(session.user.id, false);
+        })
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
     };
 
     init();
   }, [router]);
 
-  const fetchMyBids = async (userId: string) => {
-    setIsLoading(true);
+  const fetchMyBids = async (userId: string, showLoading: boolean = true) => {
+    if (showLoading) setIsLoading(true);
     const { data: bids } = await supabase
       .from('bids')
       .select('*, racers(name)')
@@ -70,10 +83,11 @@ export default function UserProfile() {
         ...b,
         result: b.result || 'PENDING',
         payout: b.payout || 0,
+        payout_status: b.payout_status,
         racer_name: b.racers?.name || 'UNKNOWN'
       })));
     }
-    setIsLoading(false);
+    if (showLoading) setIsLoading(false);
   };
 
   const handleLogout = async () => {
@@ -346,7 +360,7 @@ export default function UserProfile() {
                     }}>
                       <div>
                         <p className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{new Date(bid.created_at).toLocaleDateString()}</p>
-                        <p className="text-mono" style={{ color: '#666', fontSize: '0.6rem' }}>{new Date(bid.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                        <p className="text-mono" style={{ color: '#00ff88', fontSize: '0.7rem', fontWeight: 'bold', letterSpacing: '1px' }}>#{getUnique5DigitId(bid.id, bid.ticket_id)}</p>
                       </div>
                       <p style={{ fontSize: '1rem', fontWeight: 'bold', color: '#fff' }}>{bid.racer_name}</p>
                       <p className="text-mono" style={{ textAlign: 'right', fontSize: '1rem', color: '#fff', fontWeight: 'bold' }}>
@@ -367,12 +381,12 @@ export default function UserProfile() {
                         <span className="text-mono" style={{ 
                           fontSize: '0.65rem',
                           padding: '0.15rem 0.5rem',
-                          background: bid.result === 'WON' ? 'rgba(0, 255, 136, 0.15)' : bid.result === 'LOST' ? 'rgba(255, 68, 68, 0.15)' : bid.status === 'APPROVED' ? 'rgba(242, 24, 24, 0.1)' : 'rgba(255, 255, 255, 0.05)',
-                          color: bid.result === 'WON' ? '#00ff88' : bid.result === 'LOST' ? '#ff4444' : bid.status === 'APPROVED' ? 'var(--accent-primary)' : '#fff',
-                          border: `1px solid ${bid.result === 'WON' ? '#00ff88' : bid.result === 'LOST' ? '#ff4444' : bid.status === 'APPROVED' ? 'var(--accent-primary)' : '#666'}`,
+                          background: bid.payout_status === 'RETURNED' ? 'rgba(0, 255, 136, 0.15)' : bid.payout_status === 'DECLINED' ? 'rgba(255, 68, 68, 0.15)' : bid.result === 'WON' ? 'rgba(0, 255, 136, 0.15)' : bid.result === 'LOST' ? 'rgba(255, 68, 68, 0.15)' : bid.status === 'APPROVED' ? 'rgba(242, 24, 24, 0.1)' : 'rgba(255, 255, 255, 0.05)',
+                          color: bid.payout_status === 'RETURNED' ? '#00ff88' : bid.payout_status === 'DECLINED' ? '#ff4444' : bid.result === 'WON' ? '#00ff88' : bid.result === 'LOST' ? '#ff4444' : bid.status === 'APPROVED' ? 'var(--accent-primary)' : '#fff',
+                          border: `1px solid ${bid.payout_status === 'RETURNED' ? '#00ff88' : bid.payout_status === 'DECLINED' ? '#ff4444' : bid.result === 'WON' ? '#00ff88' : bid.result === 'LOST' ? '#ff4444' : bid.status === 'APPROVED' ? 'var(--accent-primary)' : '#666'}`,
                           letterSpacing: '1px'
                         }}>
-                          {bid.result !== 'PENDING' ? bid.result : bid.status}
+                          {bid.payout_status && bid.payout_status !== 'PENDING' ? bid.payout_status : bid.result !== 'PENDING' ? bid.result : bid.status}
                         </span>
                       </div>
                     </div>

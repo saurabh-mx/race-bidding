@@ -3,9 +3,11 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { getUnique5DigitId } from '@/lib/betUtils';
 
 type Bid = {
   id: string;
+  ticket_id?: string;
   racer_id: string;
   bidder_name: string;
   amount: number;
@@ -163,7 +165,9 @@ export default function PendingBets() {
             {pendingBids.map(bid => (
               <div key={bid.id} className="glass-panel" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.5rem' }}>
                 <div>
-                  <p className="text-mono" style={{ color: 'var(--accent-primary)', fontSize: '0.75rem', marginBottom: '0.25rem' }}>{new Date(bid.created_at).toLocaleString()}</p>
+                  <p className="text-mono" style={{ color: 'var(--accent-primary)', fontSize: '0.75rem', marginBottom: '0.25rem' }}>
+                    {new Date(bid.created_at).toLocaleString()} // UID: <span style={{ color: '#00ff88', fontWeight: 'bold', letterSpacing: '1px' }}>#{getUnique5DigitId(bid.id, bid.ticket_id)}</span>
+                  </p>
                   <p style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>
                     <span style={{ color: 'var(--text-muted)' }}>{bid.bidder_name}</span> bet <span style={{ color: '#fff' }}>${bid.amount.toLocaleString()}</span> on <span style={{ color: 'var(--accent-primary)' }}>{bid.racer_name}</span>
                   </p>

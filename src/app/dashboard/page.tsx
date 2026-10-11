@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
@@ -8,6 +8,7 @@ import { verifySecurityCode } from '@/app/actions';
 import Leaderboard from '@/components/Leaderboard';
 import BetLeaderboard from '@/components/BetLeaderboard';
 import { AccessibleButton, AccessibleInput, InfoCard } from '@/components/SeniorComponents';
+import { generateUnique5DigitId, getUnique5DigitId } from '@/lib/betUtils';
 
 type Role = 'viewer' | 'agent' | 'management' | 'admin';
 
@@ -68,6 +69,10 @@ export default function Dashboard() {
   
   const [isSecurityVerified, setIsSecurityVerified] = useState(false);
   const [securityCodeInput, setSecurityCodeInput] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const isSubmittingRef = useRef(false);
+  const [betReceipt, setBetReceipt] = useState<{ id: string; status: string; amount: number; racerName?: string } | null>(null);
+  const [copiedReceipt, setCopiedReceipt] = useState(false);
 
   useEffect(() => {
     if (sessionStorage.getItem('securityVerified') === 'true') {
@@ -158,6 +163,7 @@ export default function Dashboard() {
 
   const handleBid = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (isSubmittingRef.current || isSubmitting) return;
     if (!biddingId || !bidAmount || isNaN(Number(bidAmount)) || !userId) return;
     if (!loginId) {
       showError('Missing Information', "Profile not fully set up.");
@@ -173,65 +179,86 @@ export default function Dashboard() {
 
     const isViewer = role === 'viewer';
     
-    // Fetch current round_id
-    const { data: settings } = await supabase.from('app_settings').select('current_round_id').single();
-    const roundId = settings?.current_round_id || 1;
+    // Prevent double submission / ensure only registered once at a time
+    isSubmittingRef.current = true;
+    setIsSubmitting(true);
 
-    // Validate min_bet
-    const { data: raceInfo } = await supabase.from('races').select('*').eq('id', roundId).single();
-    const minBet = racer.type === 'TEAM' ? (raceInfo?.team_min_bet || 0) : (raceInfo?.racer_min_bet || 0);
+    try {
+      // Fetch current round_id
+      const { data: settings } = await supabase.from('app_settings').select('current_round_id').single();
+      const roundId = settings?.current_round_id || 1;
 
-    if (amount < minBet) {
-      showError('Invalid Bet', `Bet amount must be at least $${minBet} for this participant.`);
-      return;
-    }
+      // Validate min_bet
+      const { data: raceInfo } = await supabase.from('races').select('*').eq('id', roundId).single();
+      const minBet = racer.type === 'TEAM' ? (raceInfo?.team_min_bet || 0) : (raceInfo?.racer_min_bet || 0);
 
-    const { error: bidError } = await supabase.from('bids').insert([
-      { 
-        racer_id: biddingId, 
-        user_id: userId, 
-        amount, 
-        bidder_name: loginId, 
-        status: isViewer ? 'PENDING' : 'APPROVED', 
-        round_id: roundId,
-        position_prediction: positionPrediction,
-        bettor_name: bettorName,
-        cid: cid,
-        image_link: imageLink
+      if (amount < minBet) {
+        showError('Invalid Bet', `Bet amount must be at least $${minBet} for this participant.`);
+        return;
       }
-    ]);
 
-    if (!bidError) {
-      if (!isViewer) {
-        await supabase.from('racers')
-          .update({ current_bid: racer.current_bid + amount })
-          .eq('id', biddingId);
-          
-        await supabase.from('audit_logs').insert([{
-          user_id: userId,
-          action: 'PLACE_BID',
-          details: `${loginId} placed an approved bet of $${amount} on ${racer?.name} (ID: ${biddingId})`
-        }]);
-        showConfirm('Success', `Bid placed successfully!`, () => {});
+      const { data: insertedBids, error: bidError } = await supabase.from('bids').insert([
+        { 
+          racer_id: biddingId, 
+          user_id: userId, 
+          amount, 
+          bidder_name: loginId, 
+          status: isViewer ? 'PENDING' : 'APPROVED', 
+          round_id: roundId,
+          position_prediction: positionPrediction,
+          bettor_name: bettorName,
+          cid: cid,
+          image_link: imageLink
+        }
+      ]).select();
+
+      const insertedBid = insertedBids?.[0];
+      const receiptId = insertedBid ? getUnique5DigitId(insertedBid.id) : await generateUnique5DigitId();
+
+      if (!bidError) {
+        if (!isViewer) {
+          await supabase.from('racers')
+            .update({ current_bid: racer.current_bid + amount })
+            .eq('id', biddingId);
+            
+          await supabase.from('audit_logs').insert([{
+            user_id: userId,
+            action: 'PLACE_BID',
+            details: `${loginId} placed an approved bet of $${amount} on ${racer?.name} (ID: ${biddingId}) [Ticket: ${receiptId}] [Receipt: ${receiptId}]`
+          }]);
+        } else {
+          await supabase.from('audit_logs').insert([{
+            user_id: userId,
+            action: 'PENDING_BID',
+            details: `${loginId} submitted a pending bet of $${amount} on ${racer?.name} (ID: ${biddingId}) [Ticket: ${receiptId}] [Receipt: ${receiptId}]`
+          }]);
+        }
+
+        // Return and show 5-digit unique ID receipt modal
+        setBetReceipt({
+          id: receiptId,
+          status: isViewer ? 'PENDING' : 'APPROVED',
+          amount,
+          racerName: racer.name
+        });
+
+        setBiddingId(null);
+        setBidAmount('');
+        setBettorName('');
+        setCid('');
+        setImageLink('');
+        setPositionPrediction('');
       } else {
-        await supabase.from('audit_logs').insert([{
-          user_id: userId,
-          action: 'PENDING_BID',
-          details: `${loginId} submitted a pending bet of $${amount} on ${racer?.name} (ID: ${biddingId})`
-        }]);
-        showConfirm('Pending Approval', `Your bet of $${amount} has been submitted and is pending AGENT approval.`, () => {});
+        console.error('Bid error:', bidError);
+        showError('Transaction Failed', bidError.message);
       }
-    } else {
-      console.error('Bid error:', bidError);
-      showError('Transaction Failed', bidError.message);
+    } catch (err: any) {
+      console.error('Error placing bet:', err);
+      showError('Transaction Failed', err?.message || 'An unexpected error occurred.');
+    } finally {
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
     }
-    
-    setBiddingId(null);
-    setBidAmount('');
-    setBettorName('');
-    setCid('');
-    setImageLink('');
-    setPositionPrediction('');
   };
 
   const handleAdjustBet = async (racerId: string, amountChange: number) => {
@@ -680,19 +707,135 @@ export default function Dashboard() {
               />
 
               <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
-                <AccessibleButton variant="secondary" onClick={() => setBiddingId(null)}>CANCEL</AccessibleButton>
+                <AccessibleButton variant="secondary" onClick={() => setBiddingId(null)} disabled={isSubmitting}>CANCEL</AccessibleButton>
                 <AccessibleButton 
-                  variant={isBetValid ? "primary" : "secondary"} 
-                  disabled={!isBetValid}
-                  style={{ opacity: isBetValid ? 1 : 0.5 }}
+                  type="submit"
+                  variant={isBetValid && !isSubmitting ? "primary" : "secondary"} 
+                  disabled={!isBetValid || isSubmitting}
+                  style={{ opacity: isBetValid && !isSubmitting ? 1 : 0.5 }}
                 >
-                  CONFIRM BET
+                  {isSubmitting ? 'CONFIRMING...' : 'CONFIRM BET'}
                 </AccessibleButton>
               </div>
             </form>
             </>
           );
         })()}
+          </div>
+        </div>
+      )}
+
+      {/* BET RECEIPT MODAL RETURNING 5-DIGIT UNIQUE ID */}
+      {betReceipt && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.9)',
+          backdropFilter: 'blur(10px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+          pointerEvents: 'auto'
+        }}>
+          <div className="glass-panel animate-in" style={{ 
+            padding: '3rem', 
+            display: 'flex', 
+            flexDirection: 'column', 
+            alignItems: 'center',
+            gap: '1.5rem',
+            minWidth: '450px',
+            maxWidth: '520px',
+            width: '90%',
+            border: '1px solid var(--accent-primary)',
+            boxShadow: '0 20px 50px rgba(242, 24, 24, 0.3)',
+            background: 'linear-gradient(145deg, rgba(20,20,20,0.95) 0%, rgba(10,10,10,0.95) 100%)'
+          }}>
+            <div style={{ 
+              width: '64px', height: '64px', 
+              borderRadius: '50%', 
+              background: betReceipt.status === 'APPROVED' ? 'rgba(0,255,136,0.1)' : 'rgba(255,170,0,0.1)', 
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              border: `2px solid ${betReceipt.status === 'APPROVED' ? '#00ff88' : '#ffaa00'}`
+            }}>
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke={betReceipt.status === 'APPROVED' ? '#00ff88' : '#ffaa00'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                {betReceipt.status === 'APPROVED' ? <polyline points="20 6 9 17 4 12" /> : <circle cx="12" cy="12" r="10" />}
+                {betReceipt.status !== 'APPROVED' && <polyline points="12 6 12 12 16 14" />}
+              </svg>
+            </div>
+
+            <h3 className="title-gradient" style={{ fontSize: '2.5rem', textTransform: 'uppercase', textAlign: 'center', margin: 0 }}>
+              {betReceipt.status === 'APPROVED' ? 'BET CONFIRMED' : 'BET PENDING'}
+            </h3>
+            
+            <div style={{ textAlign: 'center' }}>
+              <p className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '1rem', margin: '0 0 0.5rem 0' }}>
+                You placed a bet of <strong style={{ color: '#00ff88' }}>${betReceipt.amount.toLocaleString()}</strong>{betReceipt.racerName ? ` on ${betReceipt.racerName}` : ''}
+              </p>
+              <p className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: 0 }}>
+                {betReceipt.status === 'APPROVED' ? 'Your bet has been logged successfully.' : 'Waiting for management approval.'}
+              </p>
+            </div>
+
+            <div style={{ 
+              background: 'rgba(0,0,0,0.5)', 
+              border: '1px dashed rgba(255,255,255,0.2)', 
+              padding: '1.5rem', 
+              borderRadius: '8px',
+              width: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '0.5rem'
+            }}>
+              <span className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', letterSpacing: '2px' }}>TICKET ID / UNIQUE ID</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <span style={{ fontSize: '3rem', fontWeight: 900, fontFamily: 'monospace', color: '#fff', letterSpacing: '8px' }}>
+                  {betReceipt.id}
+                </span>
+                <button 
+                  onClick={() => {
+                    navigator.clipboard.writeText(betReceipt.id);
+                    setCopiedReceipt(true);
+                    setTimeout(() => setCopiedReceipt(false), 2000);
+                  }}
+                  title="Copy Ticket ID"
+                  style={{
+                    background: copiedReceipt ? 'rgba(0,255,136,0.2)' : 'rgba(255,255,255,0.1)',
+                    border: copiedReceipt ? '1px solid #00ff88' : 'none',
+                    borderRadius: '4px',
+                    padding: '0.5rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'all 0.2s ease'
+                  }}
+                  onMouseOver={e => !copiedReceipt && (e.currentTarget.style.background = 'rgba(255,255,255,0.2)')}
+                  onMouseOut={e => !copiedReceipt && (e.currentTarget.style.background = 'rgba(255,255,255,0.1)')}
+                >
+                  {copiedReceipt ? (
+                    <span style={{ color: '#00ff88', fontSize: '0.75rem', fontWeight: 'bold', fontFamily: 'monospace' }}>COPIED</span>
+                  ) : (
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <AccessibleButton 
+              variant="primary"
+              style={{ width: '100%', padding: '1rem', fontSize: '1.1rem', marginTop: '1rem' }}
+              onClick={() => {
+                setBetReceipt(null);
+                setCopiedReceipt(false);
+              }}
+            >
+              DONE
+            </AccessibleButton>
           </div>
         </div>
       )}

@@ -1,10 +1,11 @@
 'use client';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { supabase } from '@/lib/supabase';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useModal } from '@/components/ModalProvider';
+import { generateUnique5DigitId, getUnique5DigitId } from '@/lib/betUtils';
 
 type Racer = {
   id: string;
@@ -90,6 +91,9 @@ export default function RacerProfile() {
   const [isMonthlyBettingOpen, setIsMonthlyBettingOpen] = useState(false);
   const [selectedRosterSlot, setSelectedRosterSlot] = useState<number>(0);
   const [betReceipt, setBetReceipt] = useState<{ id: string, status: string, amount: number } | null>(null);
+  const [copiedReceipt, setCopiedReceipt] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const isSubmittingRef = useRef(false);
 
   useEffect(() => {
     const handleTeamBetStatus = (e: any) => setIsTeamBettingOpen(e.detail);
@@ -343,6 +347,7 @@ export default function RacerProfile() {
 
   const handleBid = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (isSubmittingRef.current || isSubmitting) return;
     if (!id || !bidAmount || isNaN(Number(bidAmount)) || !userId) return;
     if (!loginId) {
       showError('Missing Information', 'Profile not fully set up.');
@@ -357,67 +362,79 @@ export default function RacerProfile() {
 
     const isViewer = role === 'viewer';
     
-    // Fetch current round_id
-    const { data: settings } = await supabase.from('app_settings').select('current_round_id').single();
-    const roundId = settings?.current_round_id || 1;
+    isSubmittingRef.current = true;
+    setIsSubmitting(true);
 
-    // Validate min_bet
-    const { data: raceInfo } = await supabase.from('races').select('*').eq('id', roundId).single();
-    const minBet = racer.type === 'TEAM' ? (raceInfo?.team_min_bet || 0) : (raceInfo?.racer_min_bet || 0);
+    try {
+      // Fetch current round_id
+      const { data: settings } = await supabase.from('app_settings').select('current_round_id').single();
+      const roundId = settings?.current_round_id || 1;
 
-    if (amount < minBet) {
-      showError('Invalid Bet', `Bet amount must be at least $${minBet} for this participant.`);
-      return;
-    }
+      // Validate min_bet
+      const { data: raceInfo } = await supabase.from('races').select('*').eq('id', roundId).single();
+      const minBet = racer.type === 'TEAM' ? (raceInfo?.team_min_bet || 0) : (raceInfo?.racer_min_bet || 0);
 
-    const finalBettorName = (role === 'admin' || role === 'agent' || role === 'management') ? (bettorName || loginId) : loginId;
-    const finalCid = (role === 'admin' || role === 'agent' || role === 'management') ? cid : null;
-
-    const receiptId = Math.floor(100000 + Math.random() * 900000).toString();
-
-    const { error: bidError } = await supabase.from('bids').insert([
-      { 
-        racer_id: id, 
-        user_id: userId, 
-        amount, 
-        bidder_name: loginId, 
-        cid: finalCid,
-        status: isViewer ? 'PENDING' : 'APPROVED',
-        round_id: roundId,
-        position_prediction: positionPrediction
+      if (amount < minBet) {
+        showError('Invalid Bet', `Bet amount must be at least $${minBet} for this participant.`);
+        return;
       }
-    ]);
 
-    if (!bidError) {
-      if (!isViewer) {
-        await supabase.from('racers')
-          .update({ current_bid: racer.current_bid + amount })
-          .eq('id', id);
+      const finalBettorName = (role === 'admin' || role === 'agent' || role === 'management') ? (bettorName || loginId) : loginId;
+      const finalCid = (role === 'admin' || role === 'agent' || role === 'management') ? cid : null;
+
+      const { data: insertedBids, error: bidError } = await supabase.from('bids').insert([
+        { 
+          racer_id: id, 
+          user_id: userId, 
+          amount, 
+          bidder_name: loginId, 
+          cid: finalCid,
+          status: isViewer ? 'PENDING' : 'APPROVED', 
+          round_id: roundId,
+          position_prediction: positionPrediction
+        }
+      ]).select();
+
+      const insertedBid = insertedBids?.[0];
+      const receiptId = insertedBid ? getUnique5DigitId(insertedBid.id) : await generateUnique5DigitId();
+
+      if (!bidError) {
+        if (!isViewer) {
+          await supabase.from('racers')
+            .update({ current_bid: racer.current_bid + amount })
+            .eq('id', id);
+            
+          await supabase.from('audit_logs').insert([{
+            user_id: userId,
+            action: 'PLACE_BID',
+            details: `${loginId} placed an approved bet of $${amount} on ${racer.name} (ID: ${id}) [Ticket: ${receiptId}] [Receipt: ${receiptId}]`
+          }]);
           
-        await supabase.from('audit_logs').insert([{
-          user_id: userId,
-          action: 'PLACE_BID',
-          details: `${loginId} placed an approved bet of $${amount} on ${racer.name} (ID: ${id}) [Receipt: ${receiptId}]`
-        }]);
-        
-        setBetReceipt({ id: receiptId, status: 'APPROVED', amount });
+          setBetReceipt({ id: receiptId, status: 'APPROVED', amount });
+        } else {
+          await supabase.from('audit_logs').insert([{
+            user_id: userId,
+            action: 'PENDING_BID',
+            details: `${loginId} submitted a pending bet of $${amount} on ${racer.name} (ID: ${id}) [Ticket: ${receiptId}] [Receipt: ${receiptId}]`
+          }]);
+          
+          setBetReceipt({ id: receiptId, status: 'PENDING', amount });
+        }
       } else {
-        await supabase.from('audit_logs').insert([{
-          user_id: userId,
-          action: 'PENDING_BID',
-          details: `${loginId} submitted a pending bet of $${amount} on ${racer.name} (ID: ${id}) [Receipt: ${receiptId}]`
-        }]);
-        
-        setBetReceipt({ id: receiptId, status: 'PENDING', amount });
+        console.error('Bet error:', bidError);
+        showError('Transaction Failed', bidError.message);
       }
-    } else {
-      console.error('Bet error:', bidError);
-      showError('Transaction Failed', bidError.message);
+      
+      setIsBidding(false);
+      setBidAmount('');
+      setPositionPrediction('');
+    } catch (err: any) {
+      console.error('Error placing bet:', err);
+      showError('Transaction Failed', err?.message || 'An unexpected error occurred.');
+    } finally {
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
     }
-    
-    setIsBidding(false);
-    setBidAmount('');
-    setPositionPrediction('');
   };
 
   const handleDeleteBet = (bidId: string, amount: number) => {
@@ -1676,8 +1693,10 @@ export default function RacerProfile() {
               )}
 
               <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
-                <button type="button" className="btn-secondary" onClick={() => setIsBidding(false)}>CANCEL</button>
-                <button type="submit" className="btn-primary">CONFIRM BET</button>
+                <button type="button" className="btn-secondary" onClick={() => setIsBidding(false)} disabled={isSubmitting}>CANCEL</button>
+                <button type="submit" className="btn-primary" disabled={isSubmitting}>
+                  {isSubmitting ? 'CONFIRMING...' : 'CONFIRM BET'}
+                </button>
               </div>
             </form>
           </div>
@@ -1745,7 +1764,7 @@ export default function RacerProfile() {
               alignItems: 'center',
               gap: '0.5rem'
             }}>
-              <span className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', letterSpacing: '2px' }}>TICKET ID</span>
+              <span className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', letterSpacing: '2px' }}>TICKET ID / UNIQUE ID</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                 <span style={{ fontSize: '3rem', fontWeight: 900, fontFamily: 'monospace', color: '#fff', letterSpacing: '8px' }}>
                   {betReceipt.id}
@@ -1753,11 +1772,13 @@ export default function RacerProfile() {
                 <button 
                   onClick={() => {
                     navigator.clipboard.writeText(betReceipt.id);
+                    setCopiedReceipt(true);
+                    setTimeout(() => setCopiedReceipt(false), 2000);
                   }}
                   title="Copy Ticket ID"
                   style={{
-                    background: 'rgba(255,255,255,0.1)',
-                    border: 'none',
+                    background: copiedReceipt ? 'rgba(0,255,136,0.2)' : 'rgba(255,255,255,0.1)',
+                    border: copiedReceipt ? '1px solid #00ff88' : 'none',
                     borderRadius: '4px',
                     padding: '0.5rem',
                     cursor: 'pointer',
@@ -1766,13 +1787,17 @@ export default function RacerProfile() {
                     justifyContent: 'center',
                     transition: 'all 0.2s ease'
                   }}
-                  onMouseOver={e => e.currentTarget.style.background = 'rgba(255,255,255,0.2)'}
-                  onMouseOut={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+                  onMouseOver={e => !copiedReceipt && (e.currentTarget.style.background = 'rgba(255,255,255,0.2)')}
+                  onMouseOut={e => !copiedReceipt && (e.currentTarget.style.background = 'rgba(255,255,255,0.1)')}
                 >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                  </svg>
+                  {copiedReceipt ? (
+                    <span style={{ color: '#00ff88', fontSize: '0.75rem', fontWeight: 'bold', fontFamily: 'monospace' }}>COPIED</span>
+                  ) : (
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                  )}
                 </button>
               </div>
             </div>
