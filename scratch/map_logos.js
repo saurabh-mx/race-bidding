@@ -45,7 +45,6 @@ const aliases = {
   'punisher': 'rusher', // ? maybe? 
   'ghost': 'gh',
   'poison': 'poison', // ?
-  'diamound': 'gem', // ?
   'chotu18': 'chotu'
 };
 

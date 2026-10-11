@@ -45,7 +45,6 @@ const aliases = {
   'punisher': 'rusher',
   'ghost': 'gh',
   'poison': 'poison',
-  'diamound': 'gem',
   'chotu18': 'chotu'
 };
 
