@@ -142,30 +142,85 @@ export default function RulesPage() {
                     You have to check the minimum bet required on every race; it is necessary before placing your wager.
                   </div>
                 </div>
-                <div style={{ padding: '1.5rem', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                  <div style={{ color: '#00e5ff', fontWeight: 'bold' }}>04</div>
+                <div style={{ padding: '1.5rem', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
+                  <div style={{ color: '#00e5ff', fontWeight: 'bold', fontSize: '1.1rem' }}>04</div>
                   <div style={{ fontSize: '1rem', lineHeight: '1.5', flex: 1 }}>
-                    <div style={{ fontWeight: 'bold', color: '#00e5ff', marginBottom: '0.5rem' }}>RACER (INDIVIDUAL) ODDS & MULTIPLIERS</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '0.5rem', marginTop: '0.5rem' }}>
-                      <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.5rem 0.75rem', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                      <div style={{ fontWeight: 'bold', color: '#00e5ff', letterSpacing: '0.5px' }}>RACER (INDIVIDUAL) ODDS & MULTIPLIERS</div>
+                      <span className="text-mono" style={{ fontSize: '0.75rem', padding: '0.2rem 0.6rem', background: 'rgba(0, 229, 255, 0.1)', border: '1px solid rgba(0, 229, 255, 0.3)', borderRadius: '4px', color: '#00e5ff' }}>FIXED ODDS</span>
+                    </div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '0.75rem' }}>
+                      Individual racer bets use fixed multiplier payouts based on the predicted finishing position. <span style={{ color: '#fff', fontWeight: 600 }}>Payout = Bet Amount × Multiplier</span>.
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '0.5rem', marginTop: '0.5rem' }}>
+                      <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.6rem 0.75rem', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)' }}>
                         <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block' }}>POS 1</span>
-                        <span style={{ color: '#00ff88', fontWeight: 'bold', fontSize: '1.1rem' }}>1.5x</span>
+                        <span style={{ color: '#00ff88', fontWeight: 'bold', fontSize: '1.15rem' }}>1.5x</span>
                       </div>
-                      <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.5rem 0.75rem', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                      <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.6rem 0.75rem', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)' }}>
                         <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block' }}>POS 2–3</span>
-                        <span style={{ color: '#00ff88', fontWeight: 'bold', fontSize: '1.1rem' }}>1.4x</span>
+                        <span style={{ color: '#00ff88', fontWeight: 'bold', fontSize: '1.15rem' }}>1.4x</span>
                       </div>
-                      <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.5rem 0.75rem', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                      <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.6rem 0.75rem', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)' }}>
                         <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block' }}>POS 4–6</span>
-                        <span style={{ color: '#00ff88', fontWeight: 'bold', fontSize: '1.1rem' }}>1.3x</span>
+                        <span style={{ color: '#00ff88', fontWeight: 'bold', fontSize: '1.15rem' }}>1.3x</span>
                       </div>
-                      <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.5rem 0.75rem', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)' }}>
-                        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block' }}>POS 6–10</span>
-                        <span style={{ color: '#00ff88', fontWeight: 'bold', fontSize: '1.1rem' }}>1.2x</span>
+                      <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.6rem 0.75rem', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block' }}>POS 7–10</span>
+                        <span style={{ color: '#00ff88', fontWeight: 'bold', fontSize: '1.15rem' }}>1.2x</span>
                       </div>
-                      <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.5rem 0.75rem', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                      <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.6rem 0.75rem', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)' }}>
                         <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block' }}>POS 11–15</span>
-                        <span style={{ color: '#00ff88', fontWeight: 'bold', fontSize: '1.1rem' }}>1.1x</span>
+                        <span style={{ color: '#00ff88', fontWeight: 'bold', fontSize: '1.15rem' }}>1.1x</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div style={{ padding: '1.5rem', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
+                  <div style={{ color: '#00ff88', fontWeight: 'bold', fontSize: '1.1rem' }}>05</div>
+                  <div style={{ fontSize: '1rem', lineHeight: '1.5', flex: 1 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                      <div style={{ fontWeight: 'bold', color: '#00ff88', letterSpacing: '0.5px' }}>TEAM BETTING RULES & PRIZE POOL SHARE</div>
+                      <span className="text-mono" style={{ fontSize: '0.75rem', padding: '0.2rem 0.6rem', background: 'rgba(0, 255, 136, 0.1)', border: '1px solid rgba(0, 255, 136, 0.3)', borderRadius: '4px', color: '#00ff88' }}>PARI-MUTUEL POOL</span>
+                    </div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>
+                      Team betting operates on a shared pari-mutuel prize pool rather than fixed multipliers. Payouts scale dynamically based on the total betting volume and winning ratio.
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem', marginBottom: '1rem' }}>
+                      <div style={{ background: 'rgba(0, 255, 136, 0.04)', padding: '0.85rem 1rem', borderRadius: '4px', border: '1px solid rgba(0, 255, 136, 0.15)' }}>
+                        <div style={{ color: '#00ff88', fontWeight: 'bold', fontSize: '0.85rem', marginBottom: '0.25rem' }}>100% STAKE RETURN</div>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Winning bettors automatically receive their full wager amount returned.</div>
+                      </div>
+                      <div style={{ background: 'rgba(255, 179, 0, 0.04)', padding: '0.85rem 1rem', borderRadius: '4px', border: '1px solid rgba(255, 179, 0, 0.2)' }}>
+                        <div style={{ color: '#ffb300', fontWeight: 'bold', fontSize: '0.85rem', marginBottom: '0.25rem' }}>50% LOSING POOL SPLIT</div>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Winners split half of the total losing bets pool proportionally to their stake.</div>
+                      </div>
+                    </div>
+
+                    <div style={{ background: 'rgba(0,0,0,0.4)', border: '1px dashed rgba(255,255,255,0.15)', borderRadius: '4px', padding: '0.85rem 1rem', marginBottom: '1rem' }}>
+                      <span className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.25rem' }}>PAYOUT CALCULATION FORMULA:</span>
+                      <code className="text-mono" style={{ color: '#fff', fontSize: '0.85rem', display: 'block', wordBreak: 'break-word' }}>
+                        Payout = Your Bet + ((Your Bet ÷ Total Winning Pool) × (Total Losing Pool ÷ 2))
+                      </code>
+                    </div>
+
+                    <div>
+                      <span className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.4rem' }}>PREDICTION POSITION BRACKETS:</span>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                        {['1–3', '4–6', '7–9', '10–13', '13–15'].map(bracket => (
+                          <span key={bracket} className="text-mono" style={{ 
+                            background: 'rgba(255,255,255,0.03)', 
+                            border: '1px solid rgba(255,255,255,0.1)', 
+                            padding: '0.35rem 0.75rem', 
+                            borderRadius: '4px', 
+                            fontSize: '0.8rem', 
+                            color: '#fff',
+                            fontWeight: 'bold'
+                          }}>
+                            {bracket}
+                          </span>
+                        ))}
                       </div>
                     </div>
                   </div>
