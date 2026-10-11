@@ -120,7 +120,29 @@ export function GlobalTimer() {
     return () => clearInterval(interval);
   }, [teamEnd, indEnd, monthlyEnd]);
 
-  const handleSetTimer = async (minutes: number, type: 'TEAM' | 'INDIVIDUAL' | 'MONTHLY') => {
+  const handleSetTimer = async (minutes: number, type: 'TEAM' | 'INDIVIDUAL' | 'MONTHLY' | 'ALL') => {
+    if (type === 'ALL') {
+      const now = new Date().getTime();
+      const currentTeamEnd = teamEnd ? Math.max(now, teamEnd.getTime()) : now;
+      const currentIndEnd = indEnd ? Math.max(now, indEnd.getTime()) : now;
+      const currentMonthlyEnd = monthlyEnd ? Math.max(now, monthlyEnd.getTime()) : now;
+      
+      const newTeamEnd = new Date(currentTeamEnd + minutes * 60000);
+      const newIndEnd = new Date(currentIndEnd + minutes * 60000);
+      const newMonthlyEnd = new Date(currentMonthlyEnd + minutes * 60000);
+      
+      await supabase.from('app_settings').update({ 
+        team_timer_end: newTeamEnd.toISOString(),
+        individual_timer_end: newIndEnd.toISOString(),
+        monthly_timer_end: newMonthlyEnd.toISOString()
+      }).eq('id', 1);
+      
+      setTeamEnd(newTeamEnd);
+      setIndEnd(newIndEnd);
+      setMonthlyEnd(newMonthlyEnd);
+      return;
+    }
+
     const currentEnd = type === 'TEAM' 
       ? (teamEnd ? teamEnd.getTime() : new Date().getTime())
       : type === 'MONTHLY'
@@ -142,7 +164,22 @@ export function GlobalTimer() {
     }
   };
 
-  const handleStopTimer = async (type: 'TEAM' | 'INDIVIDUAL' | 'MONTHLY') => {
+  const handleStopTimer = async (type: 'TEAM' | 'INDIVIDUAL' | 'MONTHLY' | 'ALL') => {
+    if (type === 'ALL') {
+      await supabase.from('app_settings').update({ 
+        team_timer_end: null,
+        individual_timer_end: null,
+        monthly_timer_end: null
+      }).eq('id', 1);
+      setTeamEnd(null);
+      setTeamTimeLeft(0);
+      setIndEnd(null);
+      setIndTimeLeft(0);
+      setMonthlyEnd(null);
+      setMonthlyTimeLeft(0);
+      return;
+    }
+
     if (type === 'TEAM') {
       await supabase.from('app_settings').update({ team_timer_end: null }).eq('id', 1);
       setTeamEnd(null);
@@ -261,12 +298,28 @@ export function GlobalTimer() {
         .in('racer_id', postedRacerIds);
 
       if (allBids && allBids.length > 0) {
+        // RACER Fixed Odds Multipliers
+        const RACER_ODDS_MULTIPLIERS: Record<string, number> = {
+          '1': 1.5,
+          '2-3': 1.4,
+          '4-6': 1.3,
+          '6-10': 1.2,
+          '7-10': 1.2,
+          '11-15': 1.1,
+        };
+
         // Helper to check if exact pos matches prediction bucket
         const isPositionInBucket = (exactPosStr: string, bucketStr: string) => {
           if (!exactPosStr || !bucketStr) return false;
           const pos = parseInt(exactPosStr, 10);
           if (isNaN(pos)) return false;
-          const parts = bucketStr.split('-');
+
+          // Strip any multiplier text (e.g. "1 (1.5x)" -> "1")
+          const cleanBucket = bucketStr.split(' ')[0].trim();
+
+          if (cleanBucket === '1') return pos === 1;
+          const parts = cleanBucket.split('-');
+          if (parts.length === 1) return pos === parseInt(parts[0], 10);
           if (parts.length !== 2) return false;
           const min = parseInt(parts[0], 10);
           const max = parseInt(parts[1], 10);
@@ -280,11 +333,19 @@ export function GlobalTimer() {
         const totalWinningPool = winningBids.reduce((sum: number, b: any) => sum + b.amount, 0);
         const totalLosingPool = losingBids.reduce((sum: number, b: any) => sum + b.amount, 0);
 
-        // 4. Calculate payouts for winners (proportional share of HALF the losing pool)
-        // Payout = original bet + (user_bet / total_winning_pool) * (total_losing_pool / 2)
+        // 4. Calculate payouts for winners
+        // Racers (individuals): Fixed odds multipliers (1: 1.5x, 2-3: 1.4x, 4-6: 1.3x, 6-10: 1.2x, 11-15: 1.1x)
+        // Teams: Pari-mutuel proportional share of half losing pool
         for (const bid of winningBids) {
-          const share = totalWinningPool > 0 ? (bid.amount / totalWinningPool) * (totalLosingPool / 2) : 0;
-          const payout = bid.amount + Math.floor(share); // original bet back + half of loser's money
+          let payout = 0;
+          if (winnerType === 'RACER') {
+            const cleanBucket = (bid.position_prediction || '').split(' ')[0].trim();
+            const multiplier = RACER_ODDS_MULTIPLIERS[cleanBucket] || 1.2;
+            payout = Math.round(bid.amount * multiplier);
+          } else {
+            const share = totalWinningPool > 0 ? (bid.amount / totalWinningPool) * (totalLosingPool / 2) : 0;
+            payout = bid.amount + Math.floor(share);
+          }
           
           await supabase
             .from('bids')
@@ -304,7 +365,9 @@ export function GlobalTimer() {
         // Log the payout details
         await supabase.from('audit_logs').insert([{
           action: 'ANNOUNCE_WINNER',
-          details: `Announced ${winnerType} positions. Winning pool: $${totalWinningPool}, Losing pool: $${totalLosingPool}. ${winningBids.length} winning bets, ${losingBids.length} losing bets.`
+          details: winnerType === 'RACER'
+            ? `Announced RACER positions with fixed odds multipliers. ${winningBids.length} winning bets, ${losingBids.length} losing bets.`
+            : `Announced ${winnerType} positions. Winning pool: $${totalWinningPool}, Losing pool: $${totalLosingPool}. ${winningBids.length} winning bets, ${losingBids.length} losing bets.`
         }]);
       }
     }
@@ -671,7 +734,7 @@ export function GlobalTimer() {
             </p>
           </div>
 
-          {(role === 'admin' || role === 'management') && !isStreamerMode && (
+          {(role === 'admin') && !isStreamerMode && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
               <div style={{ display: 'flex', gap: '0.25rem' }}>
                 <button onClick={() => handleSetTimer(5, 'TEAM')} className="btn-secondary" style={{ width: '38px', padding: '0.25rem 0', fontSize: '0.65rem' }}>+5M</button>
@@ -706,7 +769,7 @@ export function GlobalTimer() {
             </p>
           </div>
 
-          {(role === 'admin' || role === 'management') && !isStreamerMode && (
+          {(role === 'admin') && !isStreamerMode && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
               <div style={{ display: 'flex', gap: '0.25rem' }}>
                 <button onClick={() => handleSetTimer(5, 'INDIVIDUAL')} className="btn-secondary" style={{ width: '38px', padding: '0.25rem 0', fontSize: '0.65rem' }}>+5M</button>
@@ -741,7 +804,7 @@ export function GlobalTimer() {
             </p>
           </div>
 
-          {(role === 'admin' || role === 'management') && !isStreamerMode && (
+          {(role === 'admin') && !isStreamerMode && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
               <div style={{ display: 'flex', gap: '0.25rem' }}>
                 <button onClick={() => handleSetTimer(5, 'MONTHLY')} className="btn-secondary" style={{ width: '38px', padding: '0.25rem 0', fontSize: '0.65rem' }}>+5M</button>
@@ -757,16 +820,40 @@ export function GlobalTimer() {
           )}
         </div>
 
-        {/* HOST RACE BET BUTTON */}
-        {(role === 'admin' || role === 'management') && !isStreamerMode && (
-          <div style={{ pointerEvents: 'auto', display: 'flex', alignItems: 'center' }}>
-            <button 
-              className="btn-primary" 
-              style={{ height: '62px', padding: '0 1.5rem', fontSize: '0.85rem' }}
-              onClick={() => setShowHostPanel(true)}
-            >
-              HOST RACE BET
-            </button>
+        {/* ALL WINDOWS TIMER */}
+        {(role === 'admin') && !isStreamerMode && (
+          <div style={{ pointerEvents: 'auto', display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem' }}>
+            <div className="glass-panel" style={{ 
+              padding: '0.5rem 1rem', 
+              textAlign: 'left',
+              minWidth: '150px',
+              zIndex: 10,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              border: '1px solid var(--accent-primary)',
+              background: 'rgba(20,20,20,0.8)'
+            }}>
+              <p className="text-mono" style={{ color: 'var(--accent-primary)', fontSize: '0.65rem', letterSpacing: '1px', margin: 0, lineHeight: 1.2 }}>
+                ALL<br/>WINDOWS
+              </p>
+              <p style={{ fontSize: '1rem', fontWeight: 900, color: 'var(--accent-primary)', fontFamily: 'monospace', margin: 0 }}>
+                CTRL
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              <div style={{ display: 'flex', gap: '0.25rem' }}>
+                <button onClick={() => handleSetTimer(5, 'ALL')} className="btn-secondary" style={{ width: '38px', padding: '0.25rem 0', fontSize: '0.65rem' }}>+5M</button>
+                <button onClick={() => handleSetTimer(60, 'ALL')} className="btn-secondary" style={{ width: '38px', padding: '0.25rem 0', fontSize: '0.65rem' }}>+1H</button>
+                <button onClick={() => handleStopTimer('ALL')} className="btn-primary" style={{ width: '38px', padding: '0.25rem 0', fontSize: '0.65rem' }}>STOP</button>
+              </div>
+              <div style={{ display: 'flex', gap: '0.25rem' }}>
+                <input type="number" placeholder="M" className="input-base" style={{ width: '38px', padding: '0.25rem 0', fontSize: '0.65rem', textAlign: 'center' }} value={customTime} onChange={e => setCustomTime(e.target.value)} />
+                <button onClick={() => { if(customTime) { handleSetTimer(-Number(customTime), 'ALL'); setCustomTime(''); } }} className="btn-secondary" style={{ width: '38px', padding: '0.25rem 0', fontSize: '0.65rem', border: '1px solid #ff4444', color: '#ff4444' }}>-C</button>
+                <button onClick={() => { if(customTime) { handleSetTimer(Number(customTime), 'ALL'); setCustomTime(''); } }} className="btn-secondary" style={{ width: '38px', padding: '0.25rem 0', fontSize: '0.65rem' }}>+C</button>
+              </div>
+            </div>
           </div>
         )}
       </div>

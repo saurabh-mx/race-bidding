@@ -142,6 +142,34 @@ export default function RulesPage() {
                     You have to check the minimum bet required on every race; it is necessary before placing your wager.
                   </div>
                 </div>
+                <div style={{ padding: '1.5rem', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                  <div style={{ color: '#00e5ff', fontWeight: 'bold' }}>04</div>
+                  <div style={{ fontSize: '1rem', lineHeight: '1.5', flex: 1 }}>
+                    <div style={{ fontWeight: 'bold', color: '#00e5ff', marginBottom: '0.5rem' }}>RACER (INDIVIDUAL) ODDS & MULTIPLIERS</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '0.5rem', marginTop: '0.5rem' }}>
+                      <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.5rem 0.75rem', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block' }}>POS 1</span>
+                        <span style={{ color: '#00ff88', fontWeight: 'bold', fontSize: '1.1rem' }}>1.5x</span>
+                      </div>
+                      <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.5rem 0.75rem', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block' }}>POS 2–3</span>
+                        <span style={{ color: '#00ff88', fontWeight: 'bold', fontSize: '1.1rem' }}>1.4x</span>
+                      </div>
+                      <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.5rem 0.75rem', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block' }}>POS 4–6</span>
+                        <span style={{ color: '#00ff88', fontWeight: 'bold', fontSize: '1.1rem' }}>1.3x</span>
+                      </div>
+                      <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.5rem 0.75rem', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block' }}>POS 6–10</span>
+                        <span style={{ color: '#00ff88', fontWeight: 'bold', fontSize: '1.1rem' }}>1.2x</span>
+                      </div>
+                      <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.5rem 0.75rem', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block' }}>POS 11–15</span>
+                        <span style={{ color: '#00ff88', fontWeight: 'bold', fontSize: '1.1rem' }}>1.1x</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
              </div>
           </div>
         </div>

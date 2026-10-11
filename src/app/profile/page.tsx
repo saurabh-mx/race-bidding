@@ -25,6 +25,12 @@ export default function UserProfile() {
   const [myBids, setMyBids] = useState<Bid[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Password change state
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordMessage, setPasswordMessage] = useState('');
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+
   useEffect(() => {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -73,6 +79,33 @@ export default function UserProfile() {
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.replace('/login');
+  };
+
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+      setPasswordMessage('PASSWORDS DO NOT MATCH');
+      return;
+    }
+    if (newPassword.length < 6) {
+      setPasswordMessage('PASSWORD MUST BE AT LEAST 6 CHARACTERS');
+      return;
+    }
+    
+    setIsChangingPassword(true);
+    setPasswordMessage('');
+    
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    
+    if (error) {
+      setPasswordMessage(`ERROR: ${error.message.toUpperCase()}`);
+    } else {
+      setPasswordMessage('PASSWORD UPDATED SUCCESSFULLY');
+      setNewPassword('');
+      setConfirmPassword('');
+    }
+    
+    setIsChangingPassword(false);
   };
 
   if (isLoading) return null;
@@ -229,6 +262,46 @@ export default function UserProfile() {
             </div>
           </div>
         )}
+
+        {/* ACCOUNT SECURITY */}
+        <div className="glass-panel animate-in" style={{ padding: '2rem', marginBottom: '3rem' }}>
+          <p className="text-mono" style={{ color: 'var(--accent-primary)', fontSize: '0.75rem', marginBottom: '1.5rem', letterSpacing: '2px' }}>ACCOUNT SECURITY</p>
+          
+          <form onSubmit={handlePasswordChange} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxWidth: '400px' }}>
+            <div>
+              <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginBottom: '0.25rem', display: 'block' }}>NEW PASSWORD</label>
+              <input 
+                type="password" 
+                className="input-base" 
+                value={newPassword}
+                onChange={e => setNewPassword(e.target.value)}
+                placeholder="Enter new password"
+                style={{ width: '100%', padding: '0.75rem', fontSize: '1rem' }}
+                required
+              />
+            </div>
+            <div>
+              <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginBottom: '0.25rem', display: 'block' }}>CONFIRM PASSWORD</label>
+              <input 
+                type="password" 
+                className="input-base" 
+                value={confirmPassword}
+                onChange={e => setConfirmPassword(e.target.value)}
+                placeholder="Confirm new password"
+                style={{ width: '100%', padding: '0.75rem', fontSize: '1rem' }}
+                required
+              />
+            </div>
+            {passwordMessage && (
+              <p className="text-mono" style={{ color: passwordMessage.includes('SUCCESS') ? '#00ff88' : '#ff4444', fontSize: '0.75rem', marginTop: '0.5rem' }}>
+                {passwordMessage}
+              </p>
+            )}
+            <button type="submit" className="btn-primary" style={{ padding: '0.75rem', marginTop: '0.5rem', fontSize: '0.85rem' }} disabled={isChangingPassword}>
+              {isChangingPassword ? 'UPDATING...' : 'UPDATE PASSWORD'}
+            </button>
+          </form>
+        </div>
 
         {/* TRANSACTION LOG */}
         <div className="glass-panel animate-in" style={{ padding: '2rem' }}>

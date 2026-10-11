@@ -26,6 +26,7 @@ type RaceStat = {
   name?: string;
   track?: string;
   bets: BetDetail[];
+  results?: { pos: number, name: string, is_dnf?: boolean, is_dsq?: boolean }[];
 };
 
 type BetDetail = {
@@ -36,6 +37,7 @@ type BetDetail = {
   status: string;
   result: string;
   payout: number;
+  payout_status: string;
   created_at: string;
   bidder_name?: string;
   bettor_name?: string;
@@ -132,6 +134,7 @@ export default function AGENTPanel() {
           status: b.status,
           result: b.result || 'PENDING',
           payout: b.payout || 0,
+          payout_status: b.payout_status || 'PENDING',
           created_at: b.created_at,
           bidder_name: b.profiles?.display_name || b.bidder_name || b.profiles?.login_id || 'UNKNOWN',
           bettor_name: b.bettor_name,
@@ -182,6 +185,7 @@ export default function AGENTPanel() {
         status: b.status,
         result: b.result || 'PENDING',
         payout: b.payout || 0,
+        payout_status: b.payout_status || 'PENDING',
         created_at: b.created_at,
         bidder_name: b.profiles?.display_name || b.profiles?.login_id || b.bidder_name || 'UNKNOWN',
         bettor_name: b.bettor_name,
@@ -226,6 +230,29 @@ export default function AGENTPanel() {
       roundsMap.get(rid)!.push(b);
     });
 
+    const { data: dbResults } = await supabase.from('results').select('round_id, racer_id, position, is_dnf, is_dsq');
+    const { data: allRacers } = await supabase.from('racers').select('id, name');
+    const racerMap = new Map();
+    if (allRacers) {
+      allRacers.forEach(r => racerMap.set(r.id, r.name));
+    }
+
+    const raceResultsMap = new Map<number, { pos: number, name: string, is_dnf?: boolean, is_dsq?: boolean }[]>();
+    if (dbResults) {
+      dbResults.forEach(r => {
+        if (!raceResultsMap.has(r.round_id)) raceResultsMap.set(r.round_id, []);
+        raceResultsMap.get(r.round_id)!.push({
+          pos: r.position,
+          name: racerMap.get(r.racer_id) || 'UNKNOWN',
+          is_dnf: r.is_dnf,
+          is_dsq: r.is_dsq
+        });
+      });
+      for (const [rid, resArray] of raceResultsMap.entries()) {
+        resArray.sort((a, b) => a.pos - b.pos);
+      }
+    }
+
     const raceStats: RaceStat[] = Array.from(roundsMap.entries()).map(([roundId, roundBids]) => {
       const approvedBids = roundBids.filter((b: any) => b.status === 'APPROVED');
       const totalInvested = approvedBids.reduce((sum: number, b: any) => sum + b.amount, 0);
@@ -240,6 +267,7 @@ export default function AGENTPanel() {
         status: b.status,
         result: b.result || 'PENDING',
         payout: b.payout || 0,
+        payout_status: b.payout_status || 'PENDING',
         created_at: b.created_at,
         bidder_name: b.profiles?.display_name || b.bidder_name || b.profiles?.login_id || 'UNKNOWN',
         bettor_name: b.bettor_name,
@@ -257,7 +285,8 @@ export default function AGENTPanel() {
         housePL,
         name: raceMeta?.name,
         track: raceMeta?.track,
-        bets: mappedBets
+        bets: mappedBets,
+        results: raceResultsMap.get(roundId)
       };
     }).sort((a, b) => b.round_id - a.round_id);
 
@@ -275,6 +304,24 @@ export default function AGENTPanel() {
       setFilteredUsers(users.filter(u => u.login_id.toLowerCase().includes(q)));
     }
   }, [searchQuery, users]);
+
+  const handlePayoutStatusChange = async (betId: string, newStatus: string) => {
+    if (newStatus === 'RETURNED') {
+      const confirm = window.confirm('Are you sure you want to mark this payout as RETURNED? This confirms the bettor has been paid.');
+      if (!confirm) return;
+    }
+    
+    setIsLoading(true);
+    const { error } = await supabase.from('bids').update({ payout_status: newStatus }).eq('id', betId);
+    
+    if (error) {
+      alert(`Error updating status: ${error.message}`);
+    } else if (newStatus === 'RETURNED') {
+      alert('Confirmation: Payout status updated and saved as RETURNED.');
+    }
+    
+    await loadData();
+  };
 
   if (isLoading || (role !== 'admin' && role !== 'agent' && role !== 'management')) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -613,6 +660,35 @@ export default function AGENTPanel() {
                             {selectedRace.track && <> // TRACK: <span style={{ color: '#fff' }}>{selectedRace.track.toUpperCase()}</span></>}
                           </p>
                         )}
+                        {selectedRace.results && selectedRace.results.length > 0 && (
+                          <div style={{ marginTop: '0.75rem', display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                            {selectedRace.results.slice(0, 3).map((res) => {
+                              let badgeColor = '#666';
+                              if (res.pos === 1) badgeColor = '#FFD700';
+                              else if (res.pos === 2) badgeColor = '#C0C0C0';
+                              else if (res.pos === 3) badgeColor = '#CD7F32';
+                              
+                              const status = res.is_dnf ? 'DNF' : res.is_dsq ? 'DSQ' : `${res.pos}${res.pos === 1 ? 'ST' : res.pos === 2 ? 'ND' : res.pos === 3 ? 'RD' : 'TH'}`;
+                              
+                              return (
+                                <span key={res.name} className="text-mono" style={{
+                                  fontSize: '0.7rem',
+                                  padding: '0.25rem 0.5rem',
+                                  background: 'rgba(255,255,255,0.05)',
+                                  border: `1px solid ${badgeColor}`,
+                                  color: badgeColor,
+                                  borderRadius: '2px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.5rem'
+                                }}>
+                                  <strong>{status}</strong>
+                                  <span style={{ color: '#fff' }}>{res.name.toUpperCase()}</span>
+                                </span>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                       <input
                         type="text"
@@ -626,7 +702,7 @@ export default function AGENTPanel() {
 
                     <div className="text-mono" style={{ 
                       display: 'grid', 
-                      gridTemplateColumns: '1fr 1fr 0.75fr 1.25fr 0.5fr 1fr 0.75fr 0.75fr 0.75fr 0.75fr', 
+                      gridTemplateColumns: '1fr 1fr 0.75fr 1.25fr 0.5fr 1fr 0.75fr 0.75fr 0.75fr 0.75fr 1fr', 
                       padding: '0.75rem 1rem',
                       fontSize: '0.65rem',
                       color: 'var(--text-muted)',
@@ -644,6 +720,7 @@ export default function AGENTPanel() {
                       <span style={{ textAlign: 'right' }}>PAYOUT</span>
                       <span style={{ textAlign: 'right' }}>HOUSE P&L</span>
                       <span style={{ textAlign: 'right' }}>RESULT</span>
+                      <span style={{ textAlign: 'right' }}>PAYOUT STATUS</span>
                     </div>
 
                     <div style={{ maxHeight: '400px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
@@ -661,7 +738,7 @@ export default function AGENTPanel() {
                             key={bet.id}
                             style={{ 
                               display: 'grid', 
-                              gridTemplateColumns: '1fr 1fr 0.75fr 1.25fr 0.5fr 1fr 0.75fr 0.75fr 0.75fr 0.75fr', 
+                              gridTemplateColumns: '1fr 1fr 0.75fr 1.25fr 0.5fr 1fr 0.75fr 0.75fr 0.75fr 0.75fr 1fr', 
                               padding: '0.75rem 1rem',
                               background: 'rgba(255,255,255,0.02)',
                               alignItems: 'center'
@@ -696,6 +773,27 @@ export default function AGENTPanel() {
                             }}>
                               {bet.result}
                             </span>
+                            <div style={{ textAlign: 'right' }}>
+                              <select 
+                                value={bet.payout_status}
+                                onChange={(e) => handlePayoutStatusChange(bet.id, e.target.value)}
+                                className="text-mono"
+                                style={{
+                                  background: 'rgba(0,0,0,0.5)',
+                                  color: bet.payout_status === 'RETURNED' ? '#00ff88' : bet.payout_status === 'DECLINED' ? '#ff4444' : '#fff',
+                                  border: '1px solid #333',
+                                  padding: '0.25rem',
+                                  fontSize: '0.65rem',
+                                  cursor: 'pointer',
+                                  outline: 'none',
+                                  borderRadius: '2px'
+                                }}
+                              >
+                                <option value="PENDING">PENDING</option>
+                                <option value="RETURNED">RETURNED</option>
+                                <option value="DECLINED">DECLINED</option>
+                              </select>
+                            </div>
                           </div>
                         );
                       })}

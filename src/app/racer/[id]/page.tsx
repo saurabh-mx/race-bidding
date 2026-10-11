@@ -185,6 +185,12 @@ export default function RacerProfile() {
         .single();
 
       if (racerData) {
+        // Auto-fix for eL-DRAGO logo if missing from DB
+        if (!racerData.logo_url && racerData.name?.toUpperCase() === 'EL-DRAGO') {
+          racerData.logo_url = '/soulgrid/EL-DRAGO.webp';
+          supabase.from('racers').update({ logo_url: '/soulgrid/EL-DRAGO.webp' }).eq('id', id).then();
+        }
+
         let displayTeam = racerData.team_name;
         if (!displayTeam && racerData.type !== 'TEAM' && teamsData) {
           const myTeam = teamsData.find(t => 
@@ -573,7 +579,8 @@ export default function RacerProfile() {
   }
 
   let activeMemberName = isTeam ? racer.captain_name || 'NO CAPTAIN' : racer.displayTeam || 'FREE AGENT';
-  let activeMemberImage = racer.captain_image_url;
+  const derivedCaptainImage = racer.captain_image_url || (racer.captain_name ? individuals.find(d => d.name === racer.captain_name)?.logo_url : '') || racer.logo_url;
+  let activeMemberImage = derivedCaptainImage;
   let activeMemberCategory = isTeam ? 'FRANCHISE CAPTAIN' : 'CONTRACTED RACER';
   
   let activeMemberAcq = racer.acquisition || 0;
@@ -616,7 +623,7 @@ export default function RacerProfile() {
   }
 
   return (
-    <main style={{ paddingBottom: isStream ? '0' : '4rem', overflow: isStream && !isDirector ? 'hidden' : 'auto' }}>
+    <main style={{ paddingBottom: isStream ? '0' : '14rem', overflow: isStream && !isDirector ? 'hidden' : 'auto' }}>
       <style>{isStream && !isDirector ? `::-webkit-scrollbar { display: none; }` : ''}</style>
       {!isStream && (
         <header className="glass-header">
@@ -664,7 +671,45 @@ export default function RacerProfile() {
         <div className="glass-panel animate-in" style={{ padding: '3rem', marginBottom: '3rem', display: 'flex', flexWrap: 'wrap', gap: '2rem', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
             {racer.logo_url && (
-              <img src={racer.logo_url} alt={racer.name} style={{ width: '120px', height: '120px', objectFit: 'contain' }} />
+              <div style={{ 
+                width: '150px', 
+                height: '150px', 
+                minWidth: '150px',
+                aspectRatio: '1 / 1', 
+                borderRadius: '12px', 
+                background: '#0a0a0a', 
+                border: '1px solid rgba(255, 255, 255, 0.1)', 
+                position: 'relative', 
+                overflow: 'hidden',
+                boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <img 
+                  src={racer.logo_url} 
+                  alt={racer.name} 
+                  style={{ 
+                    width: '100%', 
+                    height: '100%', 
+                    objectFit: racer.type === 'TEAM' ? 'contain' : 'cover',
+                    objectPosition: 'center',
+                    padding: racer.type === 'TEAM' ? '12px' : '0'
+                  }} 
+                />
+                {/* Fade overlay for racers portraits (skipped for team logos so emblems remain clean) */}
+                {racer.type !== 'TEAM' && (
+                  <div style={{ 
+                    position: 'absolute', 
+                    bottom: 0, 
+                    left: 0, 
+                    right: 0, 
+                    height: '25%', 
+                    background: 'linear-gradient(to top, rgba(10,10,10,0.85) 0%, transparent 100%)',
+                    pointerEvents: 'none'
+                  }}></div>
+                )}
+              </div>
             )}
             <div>
               <span className="text-mono" style={{ color: 'var(--accent-primary)', letterSpacing: '2px', fontSize: '0.85rem' }}>
@@ -675,14 +720,14 @@ export default function RacerProfile() {
               </h1>
               <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                 <span className="text-mono" style={{ 
-                  background: racer.type === 'TEAM' ? 'rgba(255,255,255,0.1)' : 'rgba(242, 24, 24, 0.2)',
-                  color: racer.type === 'TEAM' ? '#fff' : 'var(--accent-secondary)',
-                  border: `1px solid ${racer.type === 'TEAM' ? 'rgba(255,255,255,0.2)' : 'var(--accent-primary)'}`,
+                  background: racer.type === 'TEAM' ? 'rgba(255,255,255,0.1)' : (racer.type === 'CAPTAIN' || racer.racer_role === 'CAPTAIN' || racer.type === 'INDIVIDUAL' ? 'rgba(255, 179, 0, 0.15)' : 'rgba(242, 24, 24, 0.2)'),
+                  color: racer.type === 'TEAM' ? '#fff' : (racer.type === 'CAPTAIN' || racer.racer_role === 'CAPTAIN' || racer.type === 'INDIVIDUAL' ? '#ffb300' : 'var(--accent-secondary)'),
+                  border: `1px solid ${racer.type === 'TEAM' ? 'rgba(255,255,255,0.2)' : (racer.type === 'CAPTAIN' || racer.racer_role === 'CAPTAIN' || racer.type === 'INDIVIDUAL' ? '#ffb300' : 'var(--accent-primary)')}`,
                   padding: '0.5rem 1rem', 
                   fontSize: '0.85rem', 
                   fontWeight: 700 
                 }}>
-                  {racer.type === 'TEAM' ? 'TEAM' : (racer.type === 'INDIVIDUAL' ? '' : `${racer.type} `)}{racer.type !== 'TEAM' ? (racer.racer_role || 'RACER') : ''}
+                  {racer.type === 'TEAM' ? 'TEAM' : (racer.type === 'CAPTAIN' || racer.type === 'INDIVIDUAL' || racer.racer_role === 'CAPTAIN' ? 'CAPTAIN' : `${racer.type} ${racer.racer_role || 'RACER'}`)}
                 </span>
                 
                 {racer.displayTeam && racer.type !== 'TEAM' && (
@@ -861,40 +906,101 @@ export default function RacerProfile() {
                 </div>
               </div>
               
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '1rem' }}>
+              <div style={{ 
+                display: 'grid', 
+                gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', 
+                gap: '1.25rem',
+                width: '100%' 
+              }}>
                 {/* Slot 1: Captain */}
                 <div 
-                  style={{ position: 'relative', background: selectedRosterSlot === 0 ? 'rgba(242, 24, 24, 0.1)' : 'rgba(25,25,25,0.6)', border: selectedRosterSlot === 0 ? '2px solid var(--accent-primary)' : '1px solid rgba(255,255,255,0.05)', height: '280px', display: 'flex', flexDirection: 'column', cursor: racer.captain_name ? 'pointer' : 'default', transition: 'all 0.2s', overflow: 'hidden', borderRadius: '4px' }}
+                  style={{ 
+                    position: 'relative', 
+                    background: selectedRosterSlot === 0 ? 'rgba(242, 24, 24, 0.1)' : '#070707', 
+                    border: selectedRosterSlot === 0 ? '2px solid var(--accent-primary)' : '1px solid rgba(255,255,255,0.08)', 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    cursor: racer.captain_name ? 'pointer' : 'default', 
+                    transition: 'all 0.2s', 
+                    overflow: 'hidden', 
+                    borderRadius: '10px' 
+                  }}
                   onClick={() => {
                     if (racer.captain_name) {
                       setSelectedRosterSlot(0);
                     }
                   }}
                   onMouseEnter={(e) => { if (racer.captain_name && selectedRosterSlot !== 0) e.currentTarget.style.border = '1px solid rgba(255,255,255,0.3)' }}
-                  onMouseLeave={(e) => { if (selectedRosterSlot !== 0) e.currentTarget.style.border = '1px solid rgba(255,255,255,0.05)' }}
+                  onMouseLeave={(e) => { if (selectedRosterSlot !== 0) e.currentTarget.style.border = '1px solid rgba(255,255,255,0.08)' }}
                 >
-                  <span className="text-mono" style={{ position: 'absolute', top: '10px', left: '10px', zIndex: 10, color: selectedRosterSlot === 0 ? 'var(--accent-primary)' : '#fff', fontSize: '0.85rem', fontWeight: 'bold', textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}>CAPTAIN</span>
-                  
-                  {/* Image Section */}
-                  <div style={{ height: '70%', width: '100%', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                    {racer.captain_image_url ? (
-                      <img src={racer.captain_image_url} alt={racer.captain_name || ''} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  {/* Square 1:1 Image Section for 850x850 Logo */}
+                  <div style={{ 
+                    width: '100%', 
+                    aspectRatio: '1 / 1', 
+                    position: 'relative', 
+                    background: '#0a0a0a', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center', 
+                    overflow: 'hidden' 
+                  }}>
+                    <span className="text-mono" style={{ 
+                      position: 'absolute', 
+                      top: '10px', 
+                      left: '10px', 
+                      zIndex: 5, 
+                      color: '#f21818', 
+                      fontSize: '0.75rem', 
+                      fontWeight: 900,
+                      background: 'rgba(0,0,0,0.7)',
+                      padding: '2px 8px',
+                      borderRadius: '4px',
+                      border: '1px solid rgba(255,255,255,0.1)'
+                    }}>
+                      01
+                    </span>
+                    
+                    {derivedCaptainImage ? (
+                      <img 
+                        src={derivedCaptainImage} 
+                        alt={racer.captain_name || ''} 
+                        style={{ 
+                          width: '100%', 
+                          height: '100%', 
+                          objectFit: 'cover', 
+                          objectPosition: 'center',
+                          display: 'block'
+                        }} 
+                      />
                     ) : (
-                      <span style={{ color: 'rgba(255,255,255,0.1)' }}>NO IMAGE</span>
+                      <span style={{ color: 'rgba(255,255,255,0.15)', fontSize: '0.8rem' }}>NO IMAGE</span>
                     )}
+
+                    {/* Subtle bottom fade transition into card info */}
+                    <div style={{ 
+                      position: 'absolute', 
+                      bottom: 0, 
+                      left: 0, 
+                      right: 0, 
+                      height: '20%', 
+                      background: 'linear-gradient(to top, #070707 0%, transparent 100%)', 
+                      pointerEvents: 'none' 
+                    }}></div>
                   </div>
                   
                   {/* Info Section */}
-                  <div style={{ height: '30%', padding: '0.75rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', background: 'linear-gradient(180deg, rgba(20,20,20,0) 0%, rgba(10,10,10,1) 100%)' }}>
-                    <span style={{ color: '#fff', fontSize: '1.2rem', fontWeight: 900, fontStyle: 'italic', textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{racer.captain_name || 'CAPTAIN'}</span>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.65rem' }}>
-                        {racer.captain_name ? `${individuals.find(d => d.name === racer.captain_name)?.type || 'FRANCHISE'} TIER` : 'CAPTAIN'}
+                  <div style={{ padding: '0.85rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.35rem', background: '#070707', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '0.5rem' }}>
+                      <span style={{ color: '#fff', fontSize: '1.15rem', fontWeight: 900, fontStyle: 'italic', textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {racer.captain_name || 'CAPTAIN'}
                       </span>
-                      <span className="text-mono" style={{ color: '#0066ff', fontSize: '0.8rem', fontWeight: 'bold' }}>
+                      <span className="text-mono" style={{ color: '#00ff88', fontSize: '0.85rem', fontWeight: 700 }}>
                         ${racer.captain_name ? (individuals.find(d => d.name === racer.captain_name)?.acquisition || 0).toLocaleString() : '0'}
                       </span>
                     </div>
+                    <span className="text-mono" style={{ color: '#ffb300', fontSize: '0.7rem', fontWeight: 700, letterSpacing: '1px' }}>
+                      {racer.captain_name ? `${individuals.find(d => d.name === racer.captain_name)?.type === 'CAPTAIN' ? 'CLASS CAPTAIN' : (individuals.find(d => d.name === racer.captain_name)?.type || 'FRANCHISE') + ' TIER'}` : 'CAPTAIN'}
+                    </span>
                   </div>
                 </div>
                 
@@ -907,41 +1013,109 @@ export default function RacerProfile() {
                   return (
                     <div 
                       key={num} 
-                      style={{ position: 'relative', background: isSelected ? 'rgba(242, 24, 24, 0.1)' : 'rgba(25,25,25,0.6)', border: isSelected ? '2px solid var(--accent-primary)' : (driverName ? '1px solid rgba(255,255,255,0.05)' : '1px dashed rgba(255,255,255,0.1)'), height: '280px', display: 'flex', flexDirection: 'column', cursor: driverName ? 'pointer' : 'default', transition: 'all 0.2s', overflow: 'hidden', borderRadius: '4px' }}
+                      style={{ 
+                        position: 'relative', 
+                        background: isSelected ? 'rgba(242, 24, 24, 0.1)' : '#070707', 
+                        border: isSelected ? '2px solid var(--accent-primary)' : (driverName ? '1px solid rgba(255,255,255,0.08)' : '1px dashed rgba(255,255,255,0.1)'), 
+                        display: 'flex', 
+                        flexDirection: 'column', 
+                        cursor: driverName ? 'pointer' : 'default', 
+                        transition: 'all 0.2s', 
+                        overflow: 'hidden', 
+                        borderRadius: '10px' 
+                      }}
                       onClick={() => {
                         if (driverName) {
                           setSelectedRosterSlot(idx + 1);
                         }
                       }}
                       onMouseEnter={(e) => { if (driverName && !isSelected) e.currentTarget.style.border = '1px solid rgba(255,255,255,0.3)' }}
-                      onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.border = driverName ? '1px solid rgba(255,255,255,0.05)' : '1px dashed rgba(255,255,255,0.1)' }}
+                      onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.border = driverName ? '1px solid rgba(255,255,255,0.08)' : '1px dashed rgba(255,255,255,0.1)' }}
                     >
-                      <span className="text-mono" style={{ position: 'absolute', top: '10px', left: '10px', zIndex: 10, color: isSelected ? 'var(--accent-primary)' : (driverName ? '#fff' : 'rgba(255,255,255,0.3)'), fontSize: '0.85rem', fontWeight: 'bold', textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}>{driverObj ? `${driverObj.type} TIER` : `0${num}`}</span>
-                      
-                      {/* Image Section */}
-                      <div style={{ height: '70%', width: '100%', background: 'rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                      {/* Square 1:1 Image Section for 850x850 Logo */}
+                      <div style={{ 
+                        width: '100%', 
+                        aspectRatio: '1 / 1', 
+                        position: 'relative', 
+                        background: '#0a0a0a', 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'center', 
+                        overflow: 'hidden' 
+                      }}>
+                        <span className="text-mono" style={{ 
+                          position: 'absolute', 
+                          top: '10px', 
+                          left: '10px', 
+                          zIndex: 5, 
+                          color: '#f21818', 
+                          fontSize: '0.75rem', 
+                          fontWeight: 900,
+                          background: 'rgba(0,0,0,0.7)',
+                          padding: '2px 8px',
+                          borderRadius: '4px',
+                          border: '1px solid rgba(255,255,255,0.1)'
+                        }}>
+                          0{num}
+                        </span>
+
                         {driverImg ? (
-                          <img src={driverImg} alt={driverName || ''} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          <img 
+                            src={driverImg} 
+                            alt={driverName || ''} 
+                            style={{ 
+                              width: '100%', 
+                              height: '100%', 
+                              objectFit: 'cover', 
+                              objectPosition: 'center',
+                              display: 'block'
+                            }} 
+                          />
                         ) : (
-                          <span style={{ color: 'rgba(255,255,255,0.1)', fontSize: '0.75rem' }}>{driverName ? 'NO IMAGE' : ''}</span>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', color: 'rgba(255,255,255,0.15)' }}>
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                              <circle cx="12" cy="12" r="10"></circle>
+                              <line x1="12" y1="8" x2="12" y2="16"></line>
+                              <line x1="8" y1="12" x2="16" y2="12"></line>
+                            </svg>
+                            <span className="text-mono" style={{ fontSize: '0.7rem', letterSpacing: '1px' }}>{driverName ? 'NO IMAGE' : 'OPEN SEAT'}</span>
+                          </div>
+                        )}
+
+                        {/* Subtle bottom fade transition into card info */}
+                        {driverImg && (
+                          <div style={{ 
+                            position: 'absolute', 
+                            bottom: 0, 
+                            left: 0, 
+                            right: 0, 
+                            height: '20%', 
+                            background: 'linear-gradient(to top, #070707 0%, transparent 100%)', 
+                            pointerEvents: 'none' 
+                          }}></div>
                         )}
                       </div>
                       
                       {/* Info Section */}
-                      <div style={{ height: '30%', padding: '0.75rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', background: 'linear-gradient(180deg, rgba(20,20,20,0) 0%, rgba(10,10,10,1) 100%)' }}>
-                        <span style={{ color: driverName ? '#fff' : 'rgba(255,255,255,0.2)', fontSize: '1.2rem', fontWeight: 900, fontStyle: 'italic', textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{driverName || 'EMPTY'}</span>
-                        {driverName && driverObj ? (
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.65rem' }}>{driverObj.type} TIER</span>
-                            <span className="text-mono" style={{ color: '#0066ff', fontSize: '0.8rem', fontWeight: 'bold' }}>
+                      <div style={{ padding: '0.85rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.35rem', background: '#070707', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '0.5rem' }}>
+                          <span style={{ color: driverName ? '#fff' : 'rgba(255,255,255,0.2)', fontSize: '1.15rem', fontWeight: 900, fontStyle: 'italic', textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {driverName || 'EMPTY'}
+                          </span>
+                          {driverName && driverObj && (
+                            <span className="text-mono" style={{ color: '#00ff88', fontSize: '0.85rem', fontWeight: 700 }}>
                               ${(driverObj.acquisition || 0).toLocaleString()}
                             </span>
-                          </div>
+                          )}
+                        </div>
+                        {driverName && driverObj ? (
+                          <span className="text-mono" style={{ color: driverObj.type === 'CAPTAIN' ? '#ffb300' : 'var(--text-muted)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                            {driverObj.type === 'CAPTAIN' ? 'CLASS CAPTAIN' : `${driverObj.type} TIER`}
+                          </span>
                         ) : (
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span className="text-mono" style={{ color: 'rgba(255,255,255,0.1)', fontSize: '0.65rem' }}>-</span>
-                            <span className="text-mono" style={{ color: 'rgba(255,255,255,0.1)', fontSize: '0.75rem', fontWeight: 'bold' }}>-</span>
-                          </div>
+                          <span className="text-mono" style={{ color: 'rgba(255,255,255,0.2)', fontSize: '0.7rem', letterSpacing: '1px' }}>
+                            UNASSIGNED
+                          </span>
                         )}
                       </div>
                     </div>
@@ -1296,6 +1470,7 @@ export default function RacerProfile() {
                   <div>
                     <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '0.5rem', display: 'block' }}>RACER CLASS</label>
                     <select className="input-base" value={editType} onChange={e => setEditType(e.target.value)} style={{ appearance: 'none', background: 'rgba(0,0,0,0.5)', cursor: 'pointer' }}>
+                      <option value="CAPTAIN">CAPTAIN</option>
                       <option value="S">CLASS S</option>
                       <option value="X">CLASS X</option>
                       <option value="A">CLASS A</option>
@@ -1442,27 +1617,21 @@ export default function RacerProfile() {
                   required
                 >
                   <option value="" disabled>-- SELECT POSITION --</option>
-                  {(racer?.type === 'TEAM' ? 
-                    ['1-3', '4-6', '7-9', '10-13', '13-15'] : 
-                    ['1-3', '4-6', '7-10', '11-15', '16-20', '21-25', '26-30', '31-35', '36-40', '41-45']
-                  ).map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                </select>
-              </div>
-
-              <div>
-                <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem' }}>POSITION PREDICTION</label>
-                <select 
-                  className="input-base" 
-                  value={positionPrediction}
-                  onChange={(e) => setPositionPrediction(e.target.value)}
-                  style={{ width: '100%', appearance: 'none', background: 'rgba(0,0,0,0.5)', cursor: 'pointer' }}
-                  required
-                >
-                  <option value="" disabled>-- SELECT POSITION --</option>
-                  {(racer?.type === 'TEAM' ? 
-                    ['1-3', '4-6', '7-9', '10-13', '13-15'] : 
-                    ['1-3', '4-6', '7-10', '11-15', '16-20', '21-25', '26-30', '31-35', '36-40', '41-45']
-                  ).map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                  {racer?.type === 'TEAM' ? (
+                    ['1-3', '4-6', '7-9', '10-13', '13-15'].map(opt => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))
+                  ) : (
+                    [
+                      { label: '1 (1.5x)', value: '1' },
+                      { label: '2-3 (1.4x)', value: '2-3' },
+                      { label: '4-6 (1.3x)', value: '4-6' },
+                      { label: '6-10 (1.2x)', value: '6-10' },
+                      { label: '11-15 (1.1x)', value: '11-15' },
+                    ].map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))
+                  )}
                 </select>
               </div>
 

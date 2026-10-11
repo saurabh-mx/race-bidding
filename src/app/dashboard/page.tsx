@@ -14,7 +14,7 @@ type Role = 'viewer' | 'agent' | 'management' | 'admin';
 type Racer = {
   id: string;
   name: string;
-  type: 'TEAM' | 'INDIVIDUAL' | 'WEEKLY' | 'MONTHLY_RACER';
+  type: 'TEAM' | 'INDIVIDUAL' | 'CAPTAIN' | 'WEEKLY' | 'MONTHLY_RACER' | string;
   current_bid: number;
   status: 'ACTIVE' | 'CLOSED';
   captain_name?: string;
@@ -59,7 +59,7 @@ export default function Dashboard() {
   const [loginId, setLoginId] = useState<string>('');
   const [displayName, setDisplayName] = useState<string>('');
   const [userId, setUserId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'ALL' | 'TEAM' | 'INDIVIDUAL' | 'MONTHLY'>('ALL');
+  const [activeTab, setActiveTab] = useState<'ALL' | 'TEAM' | 'CAPTAIN' | 'INDIVIDUAL' | 'MONTHLY'>('ALL');
   const [isLoading, setIsLoading] = useState(true);
   const [activeRace, setActiveRace] = useState<any>(null);
   const [editModalRacerId, setEditModalRacerId] = useState<string | null>(null);
@@ -366,14 +366,14 @@ export default function Dashboard() {
           </div>
           
           <span className="text-mono" style={{ 
-            background: racer.type === 'TEAM' ? 'rgba(255,255,255,0.1)' : 'rgba(242, 24, 24, 0.2)',
-            color: racer.type === 'TEAM' ? '#fff' : 'var(--accent-secondary)',
-            border: `1px solid ${racer.type === 'TEAM' ? 'rgba(255,255,255,0.2)' : 'var(--accent-primary)'}`,
+            background: racer.type === 'TEAM' ? 'rgba(255,255,255,0.1)' : (racer.type === 'CAPTAIN' || racer.racer_role === 'CAPTAIN' || racer.type === 'INDIVIDUAL' ? 'rgba(255, 179, 0, 0.15)' : 'rgba(242, 24, 24, 0.2)'),
+            color: racer.type === 'TEAM' ? '#fff' : (racer.type === 'CAPTAIN' || racer.racer_role === 'CAPTAIN' || racer.type === 'INDIVIDUAL' ? '#ffb300' : 'var(--accent-secondary)'),
+            border: `1px solid ${racer.type === 'TEAM' ? 'rgba(255,255,255,0.2)' : (racer.type === 'CAPTAIN' || racer.racer_role === 'CAPTAIN' || racer.type === 'INDIVIDUAL' ? '#ffb300' : 'var(--accent-primary)')}`,
             padding: '0.25rem 0.5rem', 
             fontSize: '0.65rem', 
             fontWeight: 700 
           }}>
-            {racer.type === 'INDIVIDUAL' ? '' : `${racer.type} `}{racer.type !== 'TEAM' ? (racer.racer_role || 'RACER') : ''}
+            {racer.type === 'TEAM' ? 'TEAM' : (racer.type === 'CAPTAIN' || racer.type === 'INDIVIDUAL' || racer.racer_role === 'CAPTAIN' ? 'CAPTAIN' : `${racer.type} ${racer.racer_role || 'RACER'}`)}
           </span>
         </div>
         
@@ -446,7 +446,7 @@ export default function Dashboard() {
             );
           })()}
           
-          {(role === 'agent' || role === 'management' || role === 'admin') && (
+          {role === 'admin' && (
             <AccessibleButton variant="secondary" style={{ flex: '0 0 auto', padding: '12px 16px', minWidth: '0' }} onClick={(e: React.MouseEvent) => { e.stopPropagation(); setEditModalRacerId(racer.id); }}>
               EDIT
             </AccessibleButton>
@@ -493,14 +493,14 @@ export default function Dashboard() {
                 PENDING BETS
               </Link>
               {(role === 'management' || role === 'admin') && (
-                <>
-                  <Link href="/streamer" className="text-mono" style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem', textDecoration: 'none', border: '1px solid #00ff88', color: '#00ff88', background: 'rgba(0,255,136,0.1)' }}>
-                    STREAMER MODE
-                  </Link>
-                  <Link href="/streamer/panel" className="text-mono" style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem', textDecoration: 'none', border: '1px solid #00ff88', color: '#00ff88' }}>
-                    STREAMER PANEL
-                  </Link>
-                </>
+                <Link href="/streamer" className="text-mono" style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem', textDecoration: 'none', border: '1px solid #00ff88', color: '#00ff88', background: 'rgba(0,255,136,0.1)' }}>
+                  STREAMER MODE
+                </Link>
+              )}
+              {role === 'admin' && (
+                <Link href="/streamer/panel" className="text-mono" style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem', textDecoration: 'none', border: '1px solid #00ff88', color: '#00ff88' }}>
+                  STREAMER PANEL
+                </Link>
               )}
             </>
           )}
@@ -564,10 +564,10 @@ export default function Dashboard() {
         </div>
 
         <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
-          {['ALL', 'TEAM', 'INDIVIDUAL', 'MONTHLY'].map(tab => (
+          {['ALL', 'TEAM', 'CAPTAIN', 'MONTHLY'].map(tab => (
             <button
               key={tab}
-              onClick={() => setActiveTab(tab as 'ALL' | 'TEAM' | 'INDIVIDUAL' | 'MONTHLY')}
+              onClick={() => setActiveTab(tab as any)}
               className={activeTab === tab ? 'btn-primary' : 'btn-secondary'}
               style={{ padding: '0.75rem 1.5rem', fontSize: '0.85rem' }}
             >
@@ -577,13 +577,13 @@ export default function Dashboard() {
         </div>
 
         <div className="grid-3">
-          {data.filter(r => r.is_posted === true && ((activeTab === 'ALL' && !r.type.startsWith('MONTHLY_')) || (activeTab === 'INDIVIDUAL' && r.type !== 'TEAM' && !r.type.startsWith('MONTHLY_')) || (activeTab === 'MONTHLY' && r.type === 'MONTHLY_RACER') || r.type === activeTab)).length === 0 ? (
+          {data.filter(r => r.is_posted === true && ((activeTab === 'ALL' && !r.type.startsWith('MONTHLY_')) || ((activeTab === 'CAPTAIN' || activeTab === 'INDIVIDUAL') && r.type !== 'TEAM' && !r.type.startsWith('MONTHLY_')) || (activeTab === 'MONTHLY' && r.type === 'MONTHLY_RACER') || r.type === activeTab)).length === 0 ? (
              <div className="glass-panel text-mono animate-in" style={{ gridColumn: '1 / -1', padding: '4rem', textAlign: 'center', color: 'var(--text-muted)' }}>
                 NO ACTIVE BETS DETECTED.<br/><br/>
                 AWAITING AGENT TO POST BETS.
              </div>
           ) : (
-            data.filter(r => r.is_posted === true && ((activeTab === 'ALL' && !r.type.startsWith('MONTHLY_')) || (activeTab === 'INDIVIDUAL' && r.type !== 'TEAM' && !r.type.startsWith('MONTHLY_')) || (activeTab === 'MONTHLY' && r.type === 'MONTHLY_RACER') || r.type === activeTab)).map((racer, idx) => renderCard(racer, idx))
+            data.filter(r => r.is_posted === true && ((activeTab === 'ALL' && !r.type.startsWith('MONTHLY_')) || ((activeTab === 'CAPTAIN' || activeTab === 'INDIVIDUAL') && r.type !== 'TEAM' && !r.type.startsWith('MONTHLY_')) || (activeTab === 'MONTHLY' && r.type === 'MONTHLY_RACER') || r.type === activeTab)).map((racer, idx) => renderCard(racer, idx))
           )}
         </div>
         </div>
@@ -632,10 +632,21 @@ export default function Dashboard() {
                   required
                 >
                   <option value="" disabled>-- SELECT POSITION --</option>
-                  {(r?.type === 'TEAM' ? 
-                    ['1-3', '4-6', '7-9', '10-13', '13-15'] : 
-                    ['1-3', '4-6', '7-10', '11-15', '16-20', '21-25', '26-30', '31-35', '36-40', '41-45']
-                  ).map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                  {r?.type === 'TEAM' ? (
+                    ['1-3', '4-6', '7-9', '10-13', '13-15'].map(opt => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))
+                  ) : (
+                    [
+                      { label: '1 (1.5x)', value: '1' },
+                      { label: '2-3 (1.4x)', value: '2-3' },
+                      { label: '4-6 (1.3x)', value: '4-6' },
+                      { label: '6-10 (1.2x)', value: '6-10' },
+                      { label: '11-15 (1.1x)', value: '11-15' },
+                    ].map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))
+                  )}
                 </select>
               </div>
 

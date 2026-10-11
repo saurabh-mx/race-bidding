@@ -10,7 +10,9 @@ export const AccessibleButton = ({
   icon = null,
   ariaLabel = undefined,
   style = {},
-  className = ''
+  className = '',
+  disabled = false,
+  ...props
 }: any) => {
   const baseStyles: React.CSSProperties = {
     minHeight: '48px', // Minimum touch target size
@@ -23,7 +25,7 @@ export const AccessibleButton = ({
     alignItems: 'center',
     justifyContent: 'center',
     gap: '12px',
-    cursor: 'pointer',
+    cursor: disabled ? 'not-allowed' : 'pointer',
     border: 'none',
     transition: 'background-color 0.2s ease',
     textTransform: 'uppercase',
@@ -42,6 +44,8 @@ export const AccessibleButton = ({
       className={className}
       style={{ ...baseStyles, ...(variants as any)[variant], ...style }}
       aria-label={ariaLabel}
+      disabled={disabled}
+      {...props}
     >
       {icon && <span aria-hidden="true" style={{ fontSize: '24px' }}>{icon}</span>}
       {children}

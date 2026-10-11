@@ -91,6 +91,7 @@ export default function DriversPage() {
           }
           return {
             ...driver,
+            logo_url: driver.logo_url || (driver.name?.toUpperCase() === 'EL-DRAGO' ? '/soulgrid/EL-DRAGO.webp' : ''),
             team_name,
             team_logo
           };
@@ -181,13 +182,13 @@ export default function DriversPage() {
         {(() => {
           const filteredDrivers = drivers.filter(d => d.name.toLowerCase().includes(searchQuery.toLowerCase()) || (d.team_name && d.team_name.toLowerCase().includes(searchQuery.toLowerCase())));
           return [
-            { title: 'CAPTAINS', list: filteredDrivers.filter(d => d.racer_role === 'CAPTAIN') },
-            { title: 'S RACERS', list: filteredDrivers.filter(d => d.racer_role !== 'CAPTAIN' && d.type === 'S') },
-            { title: 'X RACERS', list: filteredDrivers.filter(d => d.racer_role !== 'CAPTAIN' && d.type === 'X') },
-            { title: 'A RACERS', list: filteredDrivers.filter(d => d.racer_role !== 'CAPTAIN' && d.type === 'A') },
-            { title: 'B RACERS', list: filteredDrivers.filter(d => d.racer_role !== 'CAPTAIN' && d.type === 'B') },
-            { title: 'C RACERS', list: filteredDrivers.filter(d => d.racer_role !== 'CAPTAIN' && d.type === 'C') },
-            { title: 'OTHER RACERS', list: filteredDrivers.filter(d => d.racer_role !== 'CAPTAIN' && !['S','X','A','B','C'].includes(d.type || '')) }
+            { title: 'CAPTAINS', list: filteredDrivers.filter(d => d.racer_role === 'CAPTAIN' || d.type === 'CAPTAIN' || d.type === 'INDIVIDUAL') },
+            { title: 'S RACERS', list: filteredDrivers.filter(d => d.racer_role !== 'CAPTAIN' && d.type !== 'CAPTAIN' && d.type !== 'INDIVIDUAL' && d.type === 'S') },
+            { title: 'X RACERS', list: filteredDrivers.filter(d => d.racer_role !== 'CAPTAIN' && d.type !== 'CAPTAIN' && d.type !== 'INDIVIDUAL' && d.type === 'X') },
+            { title: 'A RACERS', list: filteredDrivers.filter(d => d.racer_role !== 'CAPTAIN' && d.type !== 'CAPTAIN' && d.type !== 'INDIVIDUAL' && d.type === 'A') },
+            { title: 'B RACERS', list: filteredDrivers.filter(d => d.racer_role !== 'CAPTAIN' && d.type !== 'CAPTAIN' && d.type !== 'INDIVIDUAL' && d.type === 'B') },
+            { title: 'C RACERS', list: filteredDrivers.filter(d => d.racer_role !== 'CAPTAIN' && d.type !== 'CAPTAIN' && d.type !== 'INDIVIDUAL' && d.type === 'C') },
+            { title: 'OTHER RACERS', list: filteredDrivers.filter(d => d.racer_role !== 'CAPTAIN' && d.type !== 'CAPTAIN' && d.type !== 'INDIVIDUAL' && !['S','X','A','B','C'].includes(d.type || '')) }
           ].map(group => group.list.length > 0 && (
           <div key={group.title} style={{ marginBottom: '6rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '4rem', borderBottom: '1px solid var(--accent-primary)', paddingBottom: '1.5rem' }}>
@@ -252,7 +253,7 @@ export default function DriversPage() {
 
               {/* Inner Black Card */}
               <div style={{ background: '#070707', borderRadius: '16px 16px 0 0', padding: '2rem', zIndex: 2, position: 'relative', flex: 1, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                <span className="text-mono" style={{ color: driver.racer_role === 'CAPTAIN' ? '#ffb300' : 'var(--accent-secondary)', fontSize: '0.75rem', letterSpacing: '2px', textTransform: 'uppercase' }}>{driver.racer_role || 'RACER'}</span>
+                <span className="text-mono" style={{ color: driver.racer_role === 'CAPTAIN' || driver.type === 'CAPTAIN' ? '#ffb300' : 'var(--accent-secondary)', fontSize: '0.75rem', letterSpacing: '2px', textTransform: 'uppercase' }}>{driver.type === 'CAPTAIN' ? 'CAPTAIN' : (driver.racer_role || 'RACER')}</span>
                 <h3 style={{ fontSize: '2.5rem', fontStyle: 'italic', fontWeight: 900, textTransform: 'uppercase', marginBottom: '1rem', lineHeight: 1, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{driver.name}</h3>
                 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem', minHeight: '35px' }}>
@@ -264,7 +265,7 @@ export default function DriversPage() {
                   <div style={{ display: 'flex', flexDirection: 'column' }}>
                     <span className="text-mono" style={{ color: 'var(--accent-primary)', fontSize: '0.7rem', fontWeight: 'bold', textTransform: 'uppercase' }}>{driver.team_name || 'FREE AGENT'}</span>
                     <span className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.55rem' }}>
-                      {driver.type === 'INDIVIDUAL' ? '' : `${driver.type} `}{driver.racer_role || 'RACER'}
+                      {driver.type === 'CAPTAIN' ? 'CAPTAIN' : (driver.type === 'INDIVIDUAL' ? '' : `${driver.type} `)}{driver.type !== 'CAPTAIN' ? (driver.racer_role || 'RACER') : ''}
                     </span>
                   </div>
                 </div>
@@ -323,6 +324,7 @@ export default function DriversPage() {
                   <div>
                     <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '0.5rem', display: 'block' }}>RACER CLASS</label>
                     <select className="input-base" value={newType} onChange={e => setNewType(e.target.value)} style={{ appearance: 'none', background: 'rgba(0,0,0,0.5)', cursor: 'pointer', width: '100%' }}>
+                      <option value="CAPTAIN">CLASS CAPTAIN</option>
                       <option value="S">CLASS S</option>
                       <option value="X">CLASS X</option>
                       <option value="A">CLASS A</option>
