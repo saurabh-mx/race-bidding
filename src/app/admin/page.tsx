@@ -60,7 +60,8 @@ export default function AdminPage() {
   const [editingPoints, setEditingPoints] = useState<Record<string, number>>({});
   const [leaderboardSearch, setLeaderboardSearch] = useState('');
   const [leaderboardTab, setLeaderboardTab] = useState<'RACERS' | 'TEAMS'>('RACERS');
-  const { showError, showSuccess } = useModal();
+  const [isResetting, setIsResetting] = useState(false);
+  const { showError, showConfirm, showSuccess } = useModal();
 
   useEffect(() => {
     const init = async () => {
@@ -251,6 +252,59 @@ export default function AdminPage() {
     } catch (err: any) {
       showError('Error', 'Failed to update points: ' + err.message);
     }
+  };
+
+  const handleResetAllPoints = () => {
+    showConfirm(
+      'RESET ALL POINTS',
+      'Are you sure you want to reset ALL tournament points to 0 for all captains and teams? This will immediately clear all points on the leaderboard and cannot be undone.',
+      async () => {
+        try {
+          setIsResetting(true);
+          let { error } = await supabase
+            .from('racers')
+            .update({ tournament_points: 0 })
+            .not('id', 'is', null);
+
+          if (error) {
+            const updates = racers.map(r => 
+              supabase.from('racers').update({ tournament_points: 0 }).eq('id', r.id)
+            );
+            await Promise.all(updates);
+          }
+
+          const { data: allRacers } = await supabase
+            .from('racers')
+            .select('id, name, type, tournament_points')
+            .order('name', { ascending: true });
+            
+          if (allRacers) {
+            setRacers(allRacers);
+            const zeroedPoints: Record<string, number> = {};
+            allRacers.forEach(r => {
+              zeroedPoints[r.id] = 0;
+            });
+            setEditingPoints(zeroedPoints);
+          }
+
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session) {
+            await supabase.from('audit_logs').insert([{
+              user_id: session.user.id,
+              action: 'RESET_LEADERBOARD_POINTS',
+              details: 'Admin reset all tournament points to 0 for all racers and teams'
+            }]);
+          }
+
+          showSuccess('Success', 'All tournament points have been reset to 0.');
+        } catch (err: any) {
+          showError('Reset Failed', 'Failed to reset points: ' + err.message);
+        } finally {
+          setIsResetting(false);
+        }
+      },
+      true
+    );
   };
 
   const handleCancelBet = async (bidId: string, amount: number, racerId: string) => {
@@ -696,18 +750,45 @@ export default function AdminPage() {
               </table>
             </div>
 
-            <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem', flexWrap: 'wrap' }}>
               <button 
+                type="button"
+                onClick={handleResetAllPoints} 
+                disabled={isResetting}
+                style={{ 
+                  flex: '1 1 180px', 
+                  padding: '1rem 0.5rem', 
+                  fontSize: '0.85rem',
+                  fontWeight: 900,
+                  fontFamily: 'monospace',
+                  background: 'rgba(255, 42, 42, 0.12)',
+                  color: '#ff4d4d',
+                  border: '1px solid rgba(255, 42, 42, 0.5)',
+                  borderRadius: '4px',
+                  cursor: isResetting ? 'not-allowed' : 'pointer',
+                  transition: 'all 0.2s',
+                  textTransform: 'uppercase',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.5rem'
+                }}
+              >
+                {isResetting ? 'RESETTING...' : 'RESET ALL POINTS'}
+              </button>
+              <button 
+                type="button"
                 onClick={() => setShowLeaderboardEdit(false)} 
                 className="btn-secondary" 
-                style={{ flex: 1, padding: '1rem', fontSize: '1rem' }}
+                style={{ flex: '1 1 100px', padding: '1rem', fontSize: '1rem' }}
               >
                 CANCEL
               </button>
               <button 
+                type="button"
                 onClick={handleSaveLeaderboardPoints} 
                 className="btn-primary" 
-                style={{ flex: 1, padding: '1rem', fontSize: '1rem' }}
+                style={{ flex: '1 1 140px', padding: '1rem', fontSize: '1rem' }}
               >
                 SAVE CHANGES
               </button>
