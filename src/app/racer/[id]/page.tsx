@@ -86,11 +86,13 @@ export default function RacerProfile() {
   const [cid, setCid] = useState<string>('');
   const [imageLink, setImageLink] = useState<string>('');
   const [positionPrediction, setPositionPrediction] = useState<string>('');
+  const [customPos, setCustomPos] = useState<string>('');
+  const [customOdds, setCustomOdds] = useState<string>('');
   const [isTeamBettingOpen, setIsTeamBettingOpen] = useState(false);
   const [isIndBettingOpen, setIsIndBettingOpen] = useState(false);
   const [isMonthlyBettingOpen, setIsMonthlyBettingOpen] = useState(false);
   const [selectedRosterSlot, setSelectedRosterSlot] = useState<number>(0);
-  const [betReceipt, setBetReceipt] = useState<{ id: string, status: string, amount: number } | null>(null);
+  const [betReceipt, setBetReceipt] = useState<{ id: string, status: string, amount: number, positionPrediction?: string } | null>(null);
   const [copiedReceipt, setCopiedReceipt] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeRace, setActiveRace] = useState<any>(null);
@@ -400,16 +402,36 @@ export default function RacerProfile() {
       const finalBettorName = (role === 'admin' || role === 'agent' || role === 'management') ? (bettorName || loginId) : loginId;
       const finalCid = (role === 'admin' || role === 'agent' || role === 'management') ? cid : null;
 
+      let finalPrediction = positionPrediction;
+      if (positionPrediction === 'CUSTOM') {
+        const cleanPos = customPos.trim().replace(/^pos(ition)?\s*/i, '');
+        const mult = parseFloat(customOdds);
+        if (!cleanPos) {
+          showError('Invalid Position', 'Please enter a valid finishing position or range (e.g. 5 or 2-5).');
+          return;
+        }
+        if (!/^(\d+|\d+\s*-\s*\d+)$/.test(cleanPos)) {
+          showError('Invalid Position Format', 'Position must be a number (e.g. 5) or range (e.g. 2-5).');
+          return;
+        }
+        if (isNaN(mult) || mult <= 1) {
+          showError('Invalid Odds', 'Custom odds multiplier must be greater than 1.0 (e.g. 1.5, 2.0).');
+          return;
+        }
+        finalPrediction = `${cleanPos.replace(/\s+/g, '')} (${mult}x)`;
+      }
+
       const { data: insertedBids, error: bidError } = await supabase.from('bids').insert([
         { 
           racer_id: id, 
           user_id: userId, 
           amount, 
           bidder_name: loginId, 
+          bettor_name: finalBettorName,
           cid: finalCid,
           status: isViewer ? 'PENDING' : 'APPROVED', 
           round_id: roundId,
-          position_prediction: positionPrediction
+          position_prediction: finalPrediction
         }
       ]).select();
 
@@ -425,18 +447,18 @@ export default function RacerProfile() {
           await supabase.from('audit_logs').insert([{
             user_id: userId,
             action: 'PLACE_BID',
-            details: `${loginId} placed an approved bet of $${amount} on ${racer.name} (ID: ${id}) [Ticket: ${receiptId}] [Receipt: ${receiptId}]`
+            details: `${loginId} placed an approved bet of $${amount} on ${racer.name} (ID: ${id}) [Prediction: ${finalPrediction}] [Ticket: ${receiptId}] [Receipt: ${receiptId}]`
           }]);
           
-          setBetReceipt({ id: receiptId, status: 'APPROVED', amount });
+          setBetReceipt({ id: receiptId, status: 'APPROVED', amount, positionPrediction: finalPrediction });
         } else {
           await supabase.from('audit_logs').insert([{
             user_id: userId,
             action: 'PENDING_BID',
-            details: `${loginId} submitted a pending bet of $${amount} on ${racer.name} (ID: ${id}) [Ticket: ${receiptId}] [Receipt: ${receiptId}]`
+            details: `${loginId} submitted a pending bet of $${amount} on ${racer.name} (ID: ${id}) [Prediction: ${finalPrediction}] [Ticket: ${receiptId}] [Receipt: ${receiptId}]`
           }]);
           
-          setBetReceipt({ id: receiptId, status: 'PENDING', amount });
+          setBetReceipt({ id: receiptId, status: 'PENDING', amount, positionPrediction: finalPrediction });
         }
       } else {
         console.error('Bet error:', bidError);
@@ -446,6 +468,8 @@ export default function RacerProfile() {
       setIsBidding(false);
       setBidAmount('');
       setPositionPrediction('');
+      setCustomPos('');
+      setCustomOdds('');
     } catch (err: any) {
       console.error('Error placing bet:', err);
       showError('Transaction Failed', err?.message || 'An unexpected error occurred.');
@@ -1629,9 +1653,13 @@ export default function RacerProfile() {
             
             {(() => {
               const minBet = racer?.type === 'TEAM' ? (activeRace?.team_min_bet || 0) : (activeRace?.racer_min_bet || 0);
-              const requiresCid = (role === 'admin' || role === 'agent' || role === 'management') && !isStream;
+              const isPrivileged = role === 'admin' || role === 'agent' || role === 'management';
+              const requiresCid = isPrivileged && !isStream;
               const isCidValid = !requiresCid || /^\d{4}$/.test(cid);
-              const isBetValid = Number(bidAmount) >= minBet && isCidValid;
+              const isPositionValid = positionPrediction === 'CUSTOM'
+                ? customPos.trim() !== '' && Number(customOdds) > 1.0
+                : positionPrediction !== '';
+              const isBetValid = Number(bidAmount) >= minBet && isCidValid && isPositionValid;
 
               return (
                 <>
@@ -1656,7 +1684,12 @@ export default function RacerProfile() {
                     </div>
 
                     <div>
-                      <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>POSITION PREDICTION</label>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                        <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 'bold' }}>POSITION PREDICTION</label>
+                        {isPrivileged && (
+                          <span className="text-mono" style={{ fontSize: '0.65rem', color: '#00e5ff' }}>OPERATOR OVERRIDE ACTIVE</span>
+                        )}
+                      </div>
                       <select 
                         className="input-base" 
                         value={positionPrediction}
@@ -1680,7 +1713,88 @@ export default function RacerProfile() {
                             <option key={opt.value} value={opt.value}>{opt.label}</option>
                           ))
                         )}
+                        {isPrivileged && (
+                          <option value="CUSTOM" style={{ color: '#00e5ff', fontWeight: 'bold' }}>
+                            ⚡ CUSTOM POSITION & ODDS
+                          </option>
+                        )}
                       </select>
+
+                      {positionPrediction === 'CUSTOM' && (
+                        <div style={{
+                          marginTop: '0.75rem',
+                          padding: '0.85rem',
+                          background: 'rgba(0, 229, 255, 0.05)',
+                          border: '1px solid rgba(0, 229, 255, 0.25)',
+                          borderRadius: '6px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '0.75rem'
+                        }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                            <div>
+                              <label className="text-mono" style={{ color: '#00e5ff', fontSize: '0.7rem', display: 'block', marginBottom: '0.35rem', fontWeight: 'bold' }}>
+                                CUSTOM POS / RANGE
+                              </label>
+                              <input
+                                type="text"
+                                className="input-base"
+                                placeholder="e.g. 5 or 2-5"
+                                value={customPos}
+                                onChange={(e) => setCustomPos(e.target.value)}
+                                style={{ width: '100%', borderColor: 'rgba(0, 229, 255, 0.4)' }}
+                                required
+                              />
+                              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'block', marginTop: '0.2rem' }}>
+                                Single (e.g. 5) or range (e.g. 2-5)
+                              </span>
+                            </div>
+                            <div>
+                              <label className="text-mono" style={{ color: '#00e5ff', fontSize: '0.7rem', display: 'block', marginBottom: '0.35rem', fontWeight: 'bold' }}>
+                                CUSTOM ODDS MULTIPLIER
+                              </label>
+                              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                                <input
+                                  type="number"
+                                  step="0.05"
+                                  min="1.01"
+                                  className="input-base"
+                                  placeholder="e.g. 2.5"
+                                  value={customOdds}
+                                  onChange={(e) => setCustomOdds(e.target.value)}
+                                  style={{ width: '100%', paddingRight: '2rem', borderColor: 'rgba(0, 229, 255, 0.4)' }}
+                                  required
+                                />
+                                <span className="text-mono" style={{ position: 'absolute', right: '0.75rem', color: '#00e5ff', fontWeight: 'bold', pointerEvents: 'none' }}>
+                                  x
+                                </span>
+                              </div>
+                              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'block', marginTop: '0.2rem' }}>
+                                Multiplier (e.g. 2.5 = 2.5x payout)
+                              </span>
+                            </div>
+                          </div>
+                          {customPos.trim() && customOdds && !isNaN(parseFloat(customOdds)) && (
+                            <div style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              padding: '0.4rem 0.6rem',
+                              background: 'rgba(0, 229, 255, 0.1)',
+                              borderRadius: '4px',
+                              fontSize: '0.75rem',
+                              color: '#00e5ff'
+                            }}>
+                              <span>Target: <strong>Pos {customPos.trim()}</strong> @ <strong>{parseFloat(customOdds)}x</strong></span>
+                              {Number(bidAmount) > 0 && (
+                                <span style={{ color: '#00ff88', fontWeight: 'bold' }}>
+                                  Est. Payout: ${Math.round(Number(bidAmount) * parseFloat(customOdds)).toLocaleString()}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     {requiresCid && (
@@ -1799,6 +1913,9 @@ export default function RacerProfile() {
             <div style={{ textAlign: 'center' }}>
               <p className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '1rem', margin: '0 0 0.5rem 0' }}>
                 You placed a bet of <strong style={{ color: '#00ff88' }}>${betReceipt.amount.toLocaleString()}</strong>
+                {betReceipt.positionPrediction && (
+                  <> on <strong style={{ color: '#00e5ff' }}>Pos {betReceipt.positionPrediction}</strong></>
+                )}
               </p>
               <p className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: 0 }}>
                 {betReceipt.status === 'APPROVED' ? 'Your bet has been logged successfully.' : 'Waiting for management approval.'}

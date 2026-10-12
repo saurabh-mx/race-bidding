@@ -83,20 +83,38 @@ function calculatePointsForPosition(exactPos: number, isDnf: boolean, isDsq: boo
   return 0;
 }
 
+function getMultiplierForBid(positionPrediction?: string | null): number {
+  if (!positionPrediction) return 1.2;
+  const oddsMatch = positionPrediction.match(/([\d.]+)x/i);
+  if (oddsMatch && !isNaN(parseFloat(oddsMatch[1]))) {
+    return parseFloat(oddsMatch[1]);
+  }
+  const cleanBucket = positionPrediction.split(' ')[0].trim();
+  return RACER_ODDS_MULTIPLIERS[cleanBucket] || 1.2;
+}
+
 function isPositionInBucket(exactPosStr: string, bucketStr?: string | null): boolean {
   if (!exactPosStr || !bucketStr) return false;
   if (exactPosStr === 'DNF' || exactPosStr === 'DSQ') return false;
   const pos = parseInt(exactPosStr, 10);
   if (isNaN(pos)) return false;
 
-  const cleanBucket = bucketStr.split(' ')[0].trim();
-  if (cleanBucket === '1') return pos === 1;
-  const parts = cleanBucket.split('-');
-  if (parts.length === 1) return pos === parseInt(parts[0], 10);
-  if (parts.length !== 2) return false;
-  const min = parseInt(parts[0], 10);
-  const max = parseInt(parts[1], 10);
-  return pos >= min && pos <= max;
+  // Clean out any custom multiplier notation (e.g. "(2.5x)" or "@ 2.5x") and position prefixes
+  const cleanPosStr = bucketStr
+    .replace(/\s*\([\d.]+x\).*/i, '')
+    .replace(/\s*@\s*[\d.]+x.*/i, '')
+    .replace(/^pos(ition)?\s*/i, '')
+    .trim();
+
+  if (cleanPosStr === '1') return pos === 1;
+  const parts = cleanPosStr.split('-').map((p) => parseInt(p.trim(), 10)).filter((n) => !isNaN(n));
+  if (parts.length === 1) return pos === parts[0];
+  if (parts.length === 2) {
+    const min = Math.min(parts[0], parts[1]);
+    const max = Math.max(parts[0], parts[1]);
+    return pos >= min && pos <= max;
+  }
+  return false;
 }
 
 export default function RaceResultPanel({
@@ -390,8 +408,7 @@ export default function RaceResultPanel({
         winningBidsCount++;
         totalWinningPool += bid.amount;
         if (activeCategory === 'RACER') {
-          const cleanBucket = (bid.position_prediction || '').split(' ')[0].trim();
-          const mult = RACER_ODDS_MULTIPLIERS[cleanBucket] || 1.2;
+          const mult = getMultiplierForBid(bid.position_prediction);
           projectedPayout += Math.round(bid.amount * mult);
         }
       } else {
@@ -401,12 +418,17 @@ export default function RaceResultPanel({
     });
 
     if (activeCategory !== 'RACER') {
-      // Parimutuel share
+      // Parimutuel share or explicit fixed odds
       relevantBids.forEach((bid) => {
         const pos = positions[bid.racer_id];
         if (pos && isPositionInBucket(pos, bid.position_prediction)) {
-          const share = totalWinningPool > 0 ? (bid.amount / totalWinningPool) * (totalLosingPool / 2) : 0;
-          projectedPayout += bid.amount + Math.floor(share);
+          if (bid.position_prediction && /[\d.]+x/i.test(bid.position_prediction)) {
+            const mult = getMultiplierForBid(bid.position_prediction);
+            projectedPayout += Math.round(bid.amount * mult);
+          } else {
+            const share = totalWinningPool > 0 ? (bid.amount / totalWinningPool) * (totalLosingPool / 2) : 0;
+            projectedPayout += bid.amount + Math.floor(share);
+          }
         }
       });
     }
@@ -521,9 +543,9 @@ export default function RaceResultPanel({
       // Prepare winning bid payout updates
       const winningUpdates = winningBids.map((bid: any) => {
         let payout = 0;
-        if (activeCategory === 'RACER') {
-          const cleanBucket = (bid.position_prediction || '').split(' ')[0].trim();
-          const multiplier = RACER_ODDS_MULTIPLIERS[cleanBucket] || 1.2;
+        const hasExplicitOdds = bid.position_prediction && /[\d.]+x/i.test(bid.position_prediction);
+        if (activeCategory === 'RACER' || hasExplicitOdds) {
+          const multiplier = getMultiplierForBid(bid.position_prediction);
           payout = Math.round(bid.amount * multiplier);
         } else {
           const share = totalWinningPool > 0 ? (bid.amount / totalWinningPool) * (totalLosingPool / 2) : 0;

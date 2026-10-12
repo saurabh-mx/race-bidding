@@ -18,6 +18,7 @@ type Bid = {
   payout_status?: string;
   created_at: string;
   racer_name?: string;
+  position_prediction?: string;
 };
 
 export default function UserProfile() {
@@ -362,7 +363,14 @@ export default function UserProfile() {
                         <p className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{new Date(bid.created_at).toLocaleDateString()}</p>
                         <p className="text-mono" style={{ color: '#00ff88', fontSize: '0.7rem', fontWeight: 'bold', letterSpacing: '1px' }}>#{getUnique5DigitId(bid.id, bid.ticket_id)}</p>
                       </div>
-                      <p style={{ fontSize: '1rem', fontWeight: 'bold', color: '#fff' }}>{bid.racer_name}</p>
+                      <div>
+                        <p style={{ fontSize: '1rem', fontWeight: 'bold', color: '#fff', margin: 0 }}>{bid.racer_name}</p>
+                        {bid.position_prediction && (
+                          <span className="text-mono" style={{ fontSize: '0.65rem', color: '#00e5ff', display: 'block', marginTop: '0.15rem' }}>
+                            🎯 {bid.position_prediction}
+                          </span>
+                        )}
+                      </div>
                       <p className="text-mono" style={{ textAlign: 'right', fontSize: '1rem', color: '#fff', fontWeight: 'bold' }}>
                         ${bid.amount.toLocaleString()}
                       </p>

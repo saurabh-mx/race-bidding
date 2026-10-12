@@ -14,6 +14,7 @@ type Bid = {
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
   created_at: string;
   racer_name?: string;
+  position_prediction?: string;
 };
 
 export default function PendingBets() {
@@ -171,6 +172,11 @@ export default function PendingBets() {
                   <p style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>
                     <span style={{ color: 'var(--text-muted)' }}>{bid.bidder_name}</span> bet <span style={{ color: '#fff' }}>${bid.amount.toLocaleString()}</span> on <span style={{ color: 'var(--accent-primary)' }}>{bid.racer_name}</span>
                   </p>
+                  {bid.position_prediction && (
+                    <p className="text-mono" style={{ fontSize: '0.8rem', color: '#00e5ff', marginTop: '0.25rem', fontWeight: 'bold' }}>
+                      🎯 TARGET FINISH: {bid.position_prediction}
+                    </p>
+                  )}
                 </div>
                 <div style={{ display: 'flex', gap: '1rem' }}>
                   <button onClick={() => handleReject(bid)} className="text-mono" style={{ padding: '0.75rem 1.5rem', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', cursor: 'pointer' }}>

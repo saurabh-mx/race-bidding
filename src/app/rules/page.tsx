@@ -173,6 +173,13 @@ export default function RulesPage() {
                         <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block' }}>POS 11–15</span>
                         <span style={{ color: '#00ff88', fontWeight: 'bold', fontSize: '1.15rem' }}>1.1x</span>
                       </div>
+                      <div style={{ background: 'rgba(0, 229, 255, 0.05)', padding: '0.6rem 0.75rem', borderRadius: '4px', border: '1px solid rgba(0, 229, 255, 0.3)' }}>
+                        <span style={{ color: '#00e5ff', fontSize: '0.75rem', display: 'block' }}>CUSTOM POS</span>
+                        <span style={{ color: '#00e5ff', fontWeight: 'bold', fontSize: '1.15rem' }}>OPERATOR</span>
+                      </div>
+                    </div>
+                    <div style={{ marginTop: '0.75rem', fontSize: '0.75rem', color: 'rgba(0, 229, 255, 0.8)' }}>
+                      ⚡ Authorized operators (management, agents, and admins) can place bets with tailored custom positions (single or range) and negotiated custom multiplier odds.
                     </div>
                   </div>
                 </div>
