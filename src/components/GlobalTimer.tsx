@@ -35,6 +35,8 @@ export function GlobalTimer() {
   const [selectedPendingRace, setSelectedPendingRace] = useState<string>('');
   const [raceForm, setRaceForm] = useState<{name: string, track: string, teamTimer: string, racerTimer: string, teamMinBet: string, racerMinBet: string, teams: any[], racers: any[]}>({ name: '', track: '', teamTimer: '', racerTimer: '', teamMinBet: '', racerMinBet: '', teams: [], racers: [] });
   const [showTimersOnStream, setShowTimersOnStream] = useState(true);
+  const [teamSelectorSearch, setTeamSelectorSearch] = useState('');
+  const [racerSelectorSearch, setRacerSelectorSearch] = useState('');
 
   useEffect(() => {
     const checkUser = async () => {
@@ -79,6 +81,16 @@ export function GlobalTimer() {
     window.addEventListener('open-host-panel', handleOpenHost);
     return () => window.removeEventListener('open-host-panel', handleOpenHost);
   }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && showCreateRacePanel) {
+        setShowCreateRacePanel(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showCreateRacePanel]);
 
   useEffect(() => {
     // Only subscribe to the Streamer Mode controls if we are in Streamer or Panel view
@@ -536,6 +548,8 @@ export function GlobalTimer() {
   const handleOpenCreateRacePanel = async (mode: 'CREATE' | 'START_BIDDING') => {
     setRaceMode(mode);
     setShowCreateRacePanel(true);
+    setTeamSelectorSearch('');
+    setRacerSelectorSearch('');
     const { data } = await supabase.from('racers').select('*').order('name');
     if (data) setAllRacers(data);
     
@@ -1167,190 +1181,800 @@ export function GlobalTimer() {
       )}
       {/* CREATE RACE PANEL MODAL */}
       {showCreateRacePanel && (
-        <div style={{
-          position: 'fixed',
-          top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.8)',
-          backdropFilter: 'blur(5px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 9999,
-          pointerEvents: 'auto'
-        }}>
-          <div className="glass-panel animate-in" style={{ 
-            padding: '2rem', 
-            display: 'flex', 
-            flexDirection: 'column', 
-            gap: '1rem',
-            minWidth: '500px',
-            border: '1px solid var(--accent-primary)',
-            boxShadow: '0 10px 40px rgba(242, 24, 24, 0.2)'
-          }}>
-            <h3 className="title-gradient" style={{ fontSize: '2rem', textTransform: 'uppercase', textAlign: 'center' }}>
-              {raceMode === 'CREATE' ? 'CREATE RACE' : 'START BIDDING'}
-            </h3>
-            <p className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', marginBottom: '1rem' }}>
-              {raceMode === 'CREATE' ? 'Configure the parameters for the new race event.' : 'Select a pending race to post the participants and start the timers.'}
-            </p>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {raceMode === 'START_BIDDING' && pendingRaces.length > 0 && (
+        <div 
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowCreateRacePanel(false);
+          }}
+          style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0, bottom: 0,
+            backgroundColor: 'rgba(5, 2, 2, 0.88)',
+            backdropFilter: 'blur(16px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '1rem',
+            pointerEvents: 'auto'
+          }}
+        >
+          <div 
+            className="glass-panel animate-in" 
+            style={{ 
+              width: '100%',
+              maxWidth: '920px',
+              maxHeight: '92vh',
+              display: 'flex', 
+              flexDirection: 'column', 
+              border: '1px solid var(--accent-primary)',
+              boxShadow: '0 25px 80px rgba(0, 0, 0, 0.9), 0 0 40px rgba(242, 24, 24, 0.25)',
+              borderRadius: '8px',
+              overflow: 'hidden'
+            }}
+          >
+            {/* Modal Header */}
+            <div style={{
+              padding: '1.25rem 2rem',
+              background: 'linear-gradient(180deg, rgba(30, 8, 8, 0.95) 0%, rgba(18, 5, 5, 0.9) 100%)',
+              borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                  <span style={{ fontSize: '0.9rem' }}>🏁</span>
+                  <span className="text-mono" style={{ fontSize: '0.65rem', color: 'var(--accent-primary)', letterSpacing: '2px', fontWeight: 'bold' }}>
+                    RACE CONTROL // ORCHESTRATOR
+                  </span>
+                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--accent-primary)', display: 'inline-block' }}></span>
+                </div>
+                <h3 className="title-gradient" style={{ fontSize: '1.75rem', textTransform: 'uppercase', letterSpacing: '-0.5px', margin: 0 }}>
+                  {raceMode === 'CREATE' ? 'CREATE RACE EVENT' : 'START BIDDING WINDOWS'}
+                </h3>
+                <p className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '0.25rem' }}>
+                  {raceMode === 'CREATE' 
+                    ? 'Configure race parameters, timers, min bets, and roster lineup.' 
+                    : 'Select a pending race round to deploy to the live terminal and start timers.'}
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <span className="text-mono" style={{
+                  fontSize: '0.65rem',
+                  padding: '0.25rem 0.6rem',
+                  borderRadius: '4px',
+                  background: raceMode === 'CREATE' ? 'rgba(242, 24, 24, 0.15)' : 'rgba(0, 255, 136, 0.15)',
+                  border: raceMode === 'CREATE' ? '1px solid var(--accent-primary)' : '1px solid #00ff88',
+                  color: raceMode === 'CREATE' ? 'var(--accent-secondary)' : '#00ff88',
+                  fontWeight: 'bold'
+                }}>
+                  {raceMode === 'CREATE' ? 'MODE: STAGING' : 'MODE: LIVE DEPLOY'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowCreateRacePanel(false)}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.06)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    color: 'var(--text-muted)',
+                    width: '34px',
+                    height: '34px',
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    fontSize: '1rem',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.color = '#fff';
+                    e.currentTarget.style.borderColor = 'var(--accent-primary)';
+                    e.currentTarget.style.background = 'rgba(242, 24, 24, 0.2)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.color = 'var(--text-muted)';
+                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
+                  }}
+                  title="Close (Esc)"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body (Scrollable) */}
+            <div style={{
+              flex: 1,
+              overflowY: 'auto',
+              padding: '1.75rem 2rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '1.5rem'
+            }}>
+              {/* START BIDDING MODE: Select Pending Race */}
+              {raceMode === 'START_BIDDING' && (
                 <div>
-                  <label className="text-mono" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem', display: 'block' }}>CONFIRM RACE</label>
-                  <select className="input-base" style={{ width: '100%', padding: '0.75rem', background: 'rgba(0,0,0,0.5)', cursor: 'pointer' }} value={selectedPendingRace} onChange={e => setSelectedPendingRace(e.target.value)}>
-                    {pendingRaces.map((pr: any, idx: number) => (
-                      <option key={idx} value={pr.id} style={{ color: '#000' }}>
-                        ROUND {pr.id}: {pr.name.toUpperCase()} {pr.track ? `// ${pr.track.toUpperCase()}` : ''}
-                      </option>
-                    ))}
-                  </select>
+                  <label className="text-mono" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold' }}>
+                    <span>⚡ SELECT PENDING RACE TO LAUNCH:</span>
+                    <span style={{ color: 'var(--accent-primary)' }}>({pendingRaces.length} available)</span>
+                  </label>
+
+                  {pendingRaces.length === 0 ? (
+                    <div style={{ padding: '3rem', textAlign: 'center', background: 'rgba(0,0,0,0.4)', border: '1px dashed rgba(255,255,255,0.15)', borderRadius: '6px' }}>
+                      <p className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                        NO PENDING RACES AVAILABLE TO DEPLOY.
+                      </p>
+                      <button
+                        onClick={() => setRaceMode('CREATE')}
+                        className="btn-primary"
+                        style={{ marginTop: '1rem', padding: '0.6rem 1.25rem', fontSize: '0.8rem' }}
+                      >
+                        + CREATE NEW RACE FIRST
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '1rem' }}>
+                      {pendingRaces.map((pr: any) => {
+                        const isSelected = selectedPendingRace === pr.id.toString();
+                        return (
+                          <div
+                            key={pr.id}
+                            onClick={() => setSelectedPendingRace(pr.id.toString())}
+                            style={{
+                              padding: '1.25rem',
+                              borderRadius: '6px',
+                              cursor: 'pointer',
+                              border: isSelected ? '1px solid #00ff88' : '1px solid rgba(255,255,255,0.1)',
+                              background: isSelected ? 'rgba(0, 255, 136, 0.08)' : 'rgba(255,255,255,0.03)',
+                              boxShadow: isSelected ? '0 0 20px rgba(0, 255, 136, 0.2)' : 'none',
+                              transition: 'all 0.2s'
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                              <span className="text-mono" style={{
+                                fontSize: '0.65rem',
+                                background: isSelected ? '#00ff88' : 'rgba(255,255,255,0.1)',
+                                color: isSelected ? '#000' : '#fff',
+                                padding: '2px 6px',
+                                borderRadius: '3px',
+                                fontWeight: 'bold'
+                              }}>
+                                ROUND #{pr.id}
+                              </span>
+                              <span className="text-mono" style={{ fontSize: '0.65rem', color: isSelected ? '#00ff88' : 'var(--text-muted)' }}>
+                                {isSelected ? '● SELECTED' : '○ CLICK TO SELECT'}
+                              </span>
+                            </div>
+
+                            <h4 style={{ fontSize: '1.1rem', fontWeight: 900, color: '#fff', marginBottom: '0.25rem', textTransform: 'uppercase' }}>
+                              {pr.name}
+                            </h4>
+                            <p className="text-mono" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
+                              TRACK: <span style={{ color: '#fff' }}>{pr.track || 'Default Circuit'}</span>
+                            </p>
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '0.5rem', fontSize: '0.7rem' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span className="text-mono" style={{ color: 'var(--accent-secondary)' }}>Team Window:</span>
+                                <span className="text-mono" style={{ color: '#fff' }}>{pr.team_timer || 0}m (Min ${pr.team_min_bet || 0})</span>
+                              </div>
+                              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span className="text-mono" style={{ color: '#00ff88' }}>Racer Window:</span>
+                                <span className="text-mono" style={{ color: '#fff' }}>{pr.racer_timer || 0}m (Min ${pr.racer_min_bet || 0})</span>
+                              </div>
+                              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span className="text-mono" style={{ color: 'var(--text-muted)' }}>Lineup:</span>
+                                <span className="text-mono" style={{ color: '#fff' }}>{pr.teams?.length || 0} Teams • {pr.racers?.length || 0} Racers</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
 
+              {/* CREATE MODE: Race Name & Track */}
               {raceMode === 'CREATE' && (
                 <>
-                  <div>
-                    <label className="text-mono" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem', display: 'block' }}>RACE NAME</label>
-                    <input type="text" className="input-base" style={{ width: '100%', padding: '0.75rem' }} value={raceForm.name} onChange={e => setRaceForm({...raceForm, name: e.target.value})} placeholder="e.g. Grand Prix Finals" />
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
+                    <div>
+                      <label className="text-mono" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold' }}>
+                        <span>🏁 RACE EVENT NAME</span>
+                        <span style={{ color: 'var(--accent-primary)' }}>*</span>
+                      </label>
+                      <input 
+                        type="text" 
+                        className="input-base text-mono" 
+                        style={{ width: '100%', fontSize: '0.9rem', padding: '0.85rem 1rem' }} 
+                        value={raceForm.name} 
+                        onChange={e => setRaceForm({ ...raceForm, name: e.target.value })} 
+                        placeholder="e.g. Grand Prix Finals #1" 
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="text-mono" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold' }}>
+                        <span>📍 CIRCUIT / TRACK LOCATION</span>
+                      </label>
+                      <input 
+                        type="text" 
+                        className="input-base text-mono" 
+                        style={{ width: '100%', fontSize: '0.9rem', padding: '0.85rem 1rem' }} 
+                        value={raceForm.track} 
+                        onChange={e => setRaceForm({ ...raceForm, track: e.target.value })} 
+                        placeholder="e.g. Neon Circuit // Sector 4" 
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label className="text-mono" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem', display: 'block' }}>TRACK</label>
-                    <input type="text" className="input-base" style={{ width: '100%', padding: '0.75rem' }} value={raceForm.track} onChange={e => setRaceForm({...raceForm, track: e.target.value})} placeholder="e.g. Neon Circuit" />
+
+                  {/* Windows & Rules (Side by Side) */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1rem' }}>
+                    {/* Team Settings Card */}
+                    <div style={{
+                      padding: '1.25rem',
+                      background: 'linear-gradient(145deg, rgba(242, 24, 24, 0.08) 0%, rgba(20, 5, 5, 0.5) 100%)',
+                      border: '1px solid rgba(242, 24, 24, 0.35)',
+                      borderRadius: '6px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '1rem'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span style={{ fontSize: '1rem' }}>🏎️</span>
+                          <h4 className="text-mono" style={{ color: 'var(--accent-primary)', fontSize: '0.85rem', fontWeight: 'bold', letterSpacing: '1px' }}>
+                            TEAM WINDOW RULES
+                          </h4>
+                        </div>
+                        <span className="text-mono" style={{ fontSize: '0.6rem', color: 'var(--accent-secondary)', background: 'rgba(242, 24, 24, 0.15)', padding: '2px 6px', borderRadius: '3px' }}>
+                          FRANCHISE POOL
+                        </span>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                        <div>
+                          <label className="text-mono" style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.35rem', display: 'block', fontWeight: 'bold' }}>
+                            TIMER (MINUTES)
+                          </label>
+                          <input 
+                            type="number" 
+                            className="input-base text-mono" 
+                            style={{ width: '100%', padding: '0.6rem 0.8rem', fontSize: '0.85rem' }} 
+                            value={raceForm.teamTimer} 
+                            onChange={e => setRaceForm({ ...raceForm, teamTimer: e.target.value })} 
+                            placeholder="e.g. 60" 
+                          />
+                          <div style={{ display: 'flex', gap: '4px', marginTop: '6px', flexWrap: 'wrap' }}>
+                            {['15', '30', '45', '60'].map(mins => (
+                              <button
+                                key={mins}
+                                type="button"
+                                onClick={() => setRaceForm({ ...raceForm, teamTimer: mins })}
+                                className="text-mono"
+                                style={{
+                                  fontSize: '0.6rem',
+                                  padding: '2px 6px',
+                                  borderRadius: '3px',
+                                  background: raceForm.teamTimer === mins ? 'var(--accent-primary)' : 'rgba(255,255,255,0.06)',
+                                  color: raceForm.teamTimer === mins ? '#fff' : 'var(--text-muted)',
+                                  border: '1px solid rgba(255,255,255,0.1)',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                {mins}m
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-mono" style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.35rem', display: 'block', fontWeight: 'bold' }}>
+                            MINIMUM BET ($)
+                          </label>
+                          <input 
+                            type="number" 
+                            className="input-base text-mono" 
+                            style={{ width: '100%', padding: '0.6rem 0.8rem', fontSize: '0.85rem' }} 
+                            value={raceForm.teamMinBet} 
+                            onChange={e => setRaceForm({ ...raceForm, teamMinBet: e.target.value })} 
+                            placeholder="e.g. 50" 
+                          />
+                          <div style={{ display: 'flex', gap: '4px', marginTop: '6px', flexWrap: 'wrap' }}>
+                            {['25', '50', '100', '250'].map(val => (
+                              <button
+                                key={val}
+                                type="button"
+                                onClick={() => setRaceForm({ ...raceForm, teamMinBet: val })}
+                                className="text-mono"
+                                style={{
+                                  fontSize: '0.6rem',
+                                  padding: '2px 6px',
+                                  borderRadius: '3px',
+                                  background: raceForm.teamMinBet === val ? 'var(--accent-primary)' : 'rgba(255,255,255,0.06)',
+                                  color: raceForm.teamMinBet === val ? '#fff' : 'var(--text-muted)',
+                                  border: '1px solid rgba(255,255,255,0.1)',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                ${val}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Racer Settings Card */}
+                    <div style={{
+                      padding: '1.25rem',
+                      background: 'linear-gradient(145deg, rgba(0, 255, 136, 0.08) 0%, rgba(5, 20, 10, 0.5) 100%)',
+                      border: '1px solid rgba(0, 255, 136, 0.35)',
+                      borderRadius: '6px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '1rem'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span style={{ fontSize: '1rem' }}>👤</span>
+                          <h4 className="text-mono" style={{ color: '#00ff88', fontSize: '0.85rem', fontWeight: 'bold', letterSpacing: '1px' }}>
+                            RACER WINDOW RULES
+                          </h4>
+                        </div>
+                        <span className="text-mono" style={{ fontSize: '0.6rem', color: '#00ff88', background: 'rgba(0, 255, 136, 0.15)', padding: '2px 6px', borderRadius: '3px' }}>
+                          DRIVER POOL
+                        </span>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                        <div>
+                          <label className="text-mono" style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.35rem', display: 'block', fontWeight: 'bold' }}>
+                            TIMER (MINUTES)
+                          </label>
+                          <input 
+                            type="number" 
+                            className="input-base text-mono" 
+                            style={{ width: '100%', padding: '0.6rem 0.8rem', fontSize: '0.85rem' }} 
+                            value={raceForm.racerTimer} 
+                            onChange={e => setRaceForm({ ...raceForm, racerTimer: e.target.value })} 
+                            placeholder="e.g. 60" 
+                          />
+                          <div style={{ display: 'flex', gap: '4px', marginTop: '6px', flexWrap: 'wrap' }}>
+                            {['15', '30', '45', '60'].map(mins => (
+                              <button
+                                key={mins}
+                                type="button"
+                                onClick={() => setRaceForm({ ...raceForm, racerTimer: mins })}
+                                className="text-mono"
+                                style={{
+                                  fontSize: '0.6rem',
+                                  padding: '2px 6px',
+                                  borderRadius: '3px',
+                                  background: raceForm.racerTimer === mins ? '#00ff88' : 'rgba(255,255,255,0.06)',
+                                  color: raceForm.racerTimer === mins ? '#000' : 'var(--text-muted)',
+                                  border: '1px solid rgba(255,255,255,0.1)',
+                                  cursor: 'pointer',
+                                  fontWeight: raceForm.racerTimer === mins ? 'bold' : 'normal'
+                                }}
+                              >
+                                {mins}m
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-mono" style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.35rem', display: 'block', fontWeight: 'bold' }}>
+                            MINIMUM BET ($)
+                          </label>
+                          <input 
+                            type="number" 
+                            className="input-base text-mono" 
+                            style={{ width: '100%', padding: '0.6rem 0.8rem', fontSize: '0.85rem' }} 
+                            value={raceForm.racerMinBet} 
+                            onChange={e => setRaceForm({ ...raceForm, racerMinBet: e.target.value })} 
+                            placeholder="e.g. 50" 
+                          />
+                          <div style={{ display: 'flex', gap: '4px', marginTop: '6px', flexWrap: 'wrap' }}>
+                            {['25', '50', '100', '250'].map(val => (
+                              <button
+                                key={val}
+                                type="button"
+                                onClick={() => setRaceForm({ ...raceForm, racerMinBet: val })}
+                                className="text-mono"
+                                style={{
+                                  fontSize: '0.6rem',
+                                  padding: '2px 6px',
+                                  borderRadius: '3px',
+                                  background: raceForm.racerMinBet === val ? '#00ff88' : 'rgba(255,255,255,0.06)',
+                                  color: raceForm.racerMinBet === val ? '#000' : 'var(--text-muted)',
+                                  border: '1px solid rgba(255,255,255,0.1)',
+                                  cursor: 'pointer',
+                                  fontWeight: raceForm.racerMinBet === val ? 'bold' : 'normal'
+                                }}
+                              >
+                                ${val}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Roster & Participant Enrollment Section */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1rem' }}>
+                    {(() => {
+                      const allTeams = allRacers.filter(r => r.type === 'TEAM');
+                      const filteredTeams = allTeams.filter(t => 
+                        !teamSelectorSearch.trim() || t.name.toLowerCase().includes(teamSelectorSearch.toLowerCase())
+                      );
+
+                      const eligibleRacers = allRacers
+                        .filter(r => r.type !== 'TEAM' && !r.type?.startsWith('MONTHLY'))
+                        .filter(r => {
+                          if (raceForm.teams.length === 0) return true;
+                          return raceForm.teams.some(t => r.team_name === t.name || r.captain_name === t.name || (t.roster && t.roster.includes(r.name)));
+                        });
+
+                      const filteredRacersList = eligibleRacers.filter(r => 
+                        !racerSelectorSearch.trim() || 
+                        r.name.toLowerCase().includes(racerSelectorSearch.toLowerCase()) ||
+                        (r.team_name && r.team_name.toLowerCase().includes(racerSelectorSearch.toLowerCase()))
+                      );
+
+                      return (
+                        <>
+                          {/* TEAMS SELECTOR */}
+                          <div style={{
+                            padding: '1.25rem',
+                            background: 'rgba(255, 255, 255, 0.02)',
+                            border: '1px solid rgba(255, 255, 255, 0.1)',
+                            borderRadius: '6px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '0.75rem'
+                          }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <label className="text-mono" style={{ fontSize: '0.75rem', color: '#fff', fontWeight: 'bold' }}>
+                                  SELECT TEAMS
+                                </label>
+                                <span className="text-mono" style={{
+                                  fontSize: '0.65rem',
+                                  background: raceForm.teams.length > 0 ? 'rgba(242, 24, 24, 0.2)' : 'rgba(255,255,255,0.06)',
+                                  color: raceForm.teams.length > 0 ? 'var(--accent-secondary)' : 'var(--text-muted)',
+                                  border: raceForm.teams.length > 0 ? '1px solid var(--accent-primary)' : '1px solid rgba(255,255,255,0.1)',
+                                  padding: '1px 6px',
+                                  borderRadius: '3px'
+                                }}>
+                                  {raceForm.teams.length}/{allTeams.length}
+                                </span>
+                              </div>
+
+                              <div style={{ display: 'flex', gap: '0.35rem' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => setRaceForm({ ...raceForm, teams: allTeams })}
+                                  className="text-mono"
+                                  style={{
+                                    fontSize: '0.65rem',
+                                    background: 'rgba(242, 24, 24, 0.15)',
+                                    border: '1px solid var(--accent-primary)',
+                                    color: '#fff',
+                                    padding: '0.2rem 0.5rem',
+                                    borderRadius: '3px',
+                                    cursor: 'pointer',
+                                    fontWeight: 'bold'
+                                  }}
+                                >
+                                  SELECT ALL
+                                </button>
+                                {raceForm.teams.length > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setRaceForm({ ...raceForm, teams: [] })}
+                                    className="text-mono"
+                                    style={{
+                                      fontSize: '0.65rem',
+                                      background: 'none',
+                                      border: '1px solid rgba(255,255,255,0.2)',
+                                      color: 'var(--text-muted)',
+                                      padding: '0.2rem 0.5rem',
+                                      borderRadius: '3px',
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    CLEAR
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Search bar */}
+                            <div style={{ position: 'relative' }}>
+                              <input
+                                type="text"
+                                className="input-base text-mono"
+                                style={{ width: '100%', padding: '0.5rem 0.75rem', fontSize: '0.75rem', minHeight: '36px' }}
+                                placeholder="Search teams..."
+                                value={teamSelectorSearch}
+                                onChange={e => setTeamSelectorSearch(e.target.value)}
+                              />
+                              {teamSelectorSearch && (
+                                <button
+                                  type="button"
+                                  onClick={() => setTeamSelectorSearch('')}
+                                  style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.75rem' }}
+                                >
+                                  ✕
+                                </button>
+                              )}
+                            </div>
+
+                            {/* Interactive Chips list */}
+                            <div style={{
+                              maxHeight: '170px',
+                              overflowY: 'auto',
+                              display: 'flex',
+                              flexWrap: 'wrap',
+                              gap: '0.4rem',
+                              padding: '0.5rem',
+                              background: 'rgba(0,0,0,0.4)',
+                              borderRadius: '4px',
+                              border: '1px solid rgba(255,255,255,0.06)'
+                            }}>
+                              {filteredTeams.length === 0 ? (
+                                <p className="text-mono" style={{ fontSize: '0.7rem', color: 'var(--text-muted)', padding: '0.5rem' }}>
+                                  No teams found matching search.
+                                </p>
+                              ) : (
+                                filteredTeams.map(t => {
+                                  const isSelected = raceForm.teams.some(team => team.id === t.id);
+                                  return (
+                                    <button
+                                      key={t.id}
+                                      type="button"
+                                      onClick={() => {
+                                        if (isSelected) {
+                                          setRaceForm({ ...raceForm, teams: raceForm.teams.filter(team => team.id !== t.id) });
+                                        } else {
+                                          setRaceForm({ ...raceForm, teams: [...raceForm.teams, t] });
+                                        }
+                                      }}
+                                      className="text-mono"
+                                      style={{
+                                        fontSize: '0.75rem',
+                                        padding: '0.35rem 0.65rem',
+                                        borderRadius: '4px',
+                                        border: isSelected ? '1px solid var(--accent-primary)' : '1px solid rgba(255,255,255,0.12)',
+                                        background: isSelected ? 'rgba(242, 24, 24, 0.25)' : 'rgba(255,255,255,0.04)',
+                                        color: isSelected ? '#fff' : 'var(--text-muted)',
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.35rem',
+                                        transition: 'all 0.15s'
+                                      }}
+                                    >
+                                      <span>{isSelected ? '✓' : '+'}</span>
+                                      <span>{t.name}</span>
+                                    </button>
+                                  );
+                                })
+                              )}
+                            </div>
+                          </div>
+
+                          {/* RACERS SELECTOR */}
+                          <div style={{
+                            padding: '1.25rem',
+                            background: 'rgba(255, 255, 255, 0.02)',
+                            border: '1px solid rgba(255, 255, 255, 0.1)',
+                            borderRadius: '6px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '0.75rem'
+                          }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <label className="text-mono" style={{ fontSize: '0.75rem', color: '#fff', fontWeight: 'bold' }}>
+                                  SELECT RACERS
+                                </label>
+                                <span className="text-mono" style={{
+                                  fontSize: '0.65rem',
+                                  background: raceForm.racers.length > 0 ? 'rgba(0, 255, 136, 0.2)' : 'rgba(255,255,255,0.06)',
+                                  color: raceForm.racers.length > 0 ? '#00ff88' : 'var(--text-muted)',
+                                  border: raceForm.racers.length > 0 ? '1px solid #00ff88' : '1px solid rgba(255,255,255,0.1)',
+                                  padding: '1px 6px',
+                                  borderRadius: '3px'
+                                }}>
+                                  {raceForm.racers.length}/{eligibleRacers.length}
+                                </span>
+                              </div>
+
+                              <div style={{ display: 'flex', gap: '0.35rem' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => setRaceForm({ ...raceForm, racers: eligibleRacers })}
+                                  className="text-mono"
+                                  style={{
+                                    fontSize: '0.65rem',
+                                    background: 'rgba(0, 255, 136, 0.15)',
+                                    border: '1px solid #00ff88',
+                                    color: '#00ff88',
+                                    padding: '0.2rem 0.5rem',
+                                    borderRadius: '3px',
+                                    cursor: 'pointer',
+                                    fontWeight: 'bold'
+                                  }}
+                                >
+                                  SELECT ALL
+                                </button>
+                                {raceForm.racers.length > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setRaceForm({ ...raceForm, racers: [] })}
+                                    className="text-mono"
+                                    style={{
+                                      fontSize: '0.65rem',
+                                      background: 'none',
+                                      border: '1px solid rgba(255,255,255,0.2)',
+                                      color: 'var(--text-muted)',
+                                      padding: '0.2rem 0.5rem',
+                                      borderRadius: '3px',
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    CLEAR
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Search bar */}
+                            <div style={{ position: 'relative' }}>
+                              <input
+                                type="text"
+                                className="input-base text-mono"
+                                style={{ width: '100%', padding: '0.5rem 0.75rem', fontSize: '0.75rem', minHeight: '36px' }}
+                                placeholder="Search racers or team..."
+                                value={racerSelectorSearch}
+                                onChange={e => setRacerSelectorSearch(e.target.value)}
+                              />
+                              {racerSelectorSearch && (
+                                <button
+                                  type="button"
+                                  onClick={() => setRacerSelectorSearch('')}
+                                  style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.75rem' }}
+                                >
+                                  ✕
+                                </button>
+                              )}
+                            </div>
+
+                            {/* Interactive Chips list */}
+                            <div style={{
+                              maxHeight: '170px',
+                              overflowY: 'auto',
+                              display: 'flex',
+                              flexWrap: 'wrap',
+                              gap: '0.4rem',
+                              padding: '0.5rem',
+                              background: 'rgba(0,0,0,0.4)',
+                              borderRadius: '4px',
+                              border: '1px solid rgba(255,255,255,0.06)'
+                            }}>
+                              {filteredRacersList.length === 0 ? (
+                                <p className="text-mono" style={{ fontSize: '0.7rem', color: 'var(--text-muted)', padding: '0.5rem' }}>
+                                  {raceForm.teams.length > 0 
+                                    ? 'No racers belong to the selected team(s).' 
+                                    : 'No racers found matching search.'}
+                                </p>
+                              ) : (
+                                filteredRacersList.map(r => {
+                                  const isSelected = raceForm.racers.some(racer => racer.id === r.id);
+                                  return (
+                                    <button
+                                      key={r.id}
+                                      type="button"
+                                      onClick={() => {
+                                        if (isSelected) {
+                                          setRaceForm({ ...raceForm, racers: raceForm.racers.filter(racer => racer.id !== r.id) });
+                                        } else {
+                                          setRaceForm({ ...raceForm, racers: [...raceForm.racers, r] });
+                                        }
+                                      }}
+                                      className="text-mono"
+                                      style={{
+                                        fontSize: '0.75rem',
+                                        padding: '0.35rem 0.65rem',
+                                        borderRadius: '4px',
+                                        border: isSelected ? '1px solid #00ff88' : '1px solid rgba(255,255,255,0.12)',
+                                        background: isSelected ? 'rgba(0, 255, 136, 0.22)' : 'rgba(255,255,255,0.04)',
+                                        color: isSelected ? '#fff' : 'var(--text-muted)',
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.35rem',
+                                        transition: 'all 0.15s'
+                                      }}
+                                    >
+                                      <span>{isSelected ? '✓' : '+'}</span>
+                                      <span>{r.name}</span>
+                                      {r.team_name && (
+                                        <span style={{ fontSize: '0.6rem', opacity: 0.7, background: 'rgba(255,255,255,0.1)', padding: '1px 4px', borderRadius: '2px' }}>
+                                          {r.team_name}
+                                        </span>
+                                      )}
+                                    </button>
+                                  );
+                                })
+                              )}
+                            </div>
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
                 </>
               )}
-              {raceMode === 'CREATE' && (
-                <div style={{ display: 'flex', gap: '1rem' }}>
-                  <div style={{ flex: 1, padding: '1rem', background: 'rgba(242, 24, 24, 0.05)', border: '1px solid var(--accent-primary)', borderRadius: '4px' }}>
-                    <h4 className="text-mono" style={{ color: 'var(--accent-primary)', fontSize: '0.85rem', marginBottom: '1rem', textAlign: 'center' }}>TEAM SETTINGS</h4>
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                      <div style={{ flex: 1 }}>
-                        <label className="text-mono" style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.25rem', display: 'block' }}>TIMER (MINUTES)</label>
-                        <input type="number" className="input-base" style={{ width: '100%', padding: '0.5rem', fontSize: '0.85rem' }} value={raceForm.teamTimer} onChange={e => setRaceForm({...raceForm, teamTimer: e.target.value})} placeholder="e.g. 60" />
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <label className="text-mono" style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.25rem', display: 'block' }}>MINIMUM BET ($)</label>
-                        <input type="number" className="input-base" style={{ width: '100%', padding: '0.5rem', fontSize: '0.85rem' }} value={raceForm.teamMinBet} onChange={e => setRaceForm({...raceForm, teamMinBet: e.target.value})} placeholder="e.g. 50" />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div style={{ flex: 1, padding: '1rem', background: 'rgba(0, 255, 136, 0.05)', border: '1px solid #00ff88', borderRadius: '4px' }}>
-                    <h4 className="text-mono" style={{ color: '#00ff88', fontSize: '0.85rem', marginBottom: '1rem', textAlign: 'center' }}>RACER SETTINGS</h4>
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                      <div style={{ flex: 1 }}>
-                        <label className="text-mono" style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.25rem', display: 'block' }}>TIMER (MINUTES)</label>
-                        <input type="number" className="input-base" style={{ width: '100%', padding: '0.5rem', fontSize: '0.85rem' }} value={raceForm.racerTimer} onChange={e => setRaceForm({...raceForm, racerTimer: e.target.value})} placeholder="e.g. 60" />
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <label className="text-mono" style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.25rem', display: 'block' }}>MINIMUM BET ($)</label>
-                        <input type="number" className="input-base" style={{ width: '100%', padding: '0.5rem', fontSize: '0.85rem' }} value={raceForm.racerMinBet} onChange={e => setRaceForm({...raceForm, racerMinBet: e.target.value})} placeholder="e.g. 50" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-              {raceMode === 'CREATE' && (
-                <div style={{ display: 'flex', gap: '1rem' }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                      <label className="text-mono" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>SELECT TEAMS</label>
-                      <button 
-                        onClick={() => {
-                          const allTeams = allRacers.filter(r => r.type === 'TEAM');
-                          setRaceForm({...raceForm, teams: allTeams});
-                        }}
-                        className="text-mono" 
-                        style={{ fontSize: '0.65rem', background: 'none', border: '1px solid var(--accent-primary)', color: 'var(--accent-primary)', padding: '0.15rem 0.5rem', borderRadius: '4px', cursor: 'pointer' }}
-                      >
-                        SELECT ALL
-                      </button>
-                    </div>
-                    <div className="input-base" style={{ minHeight: '3rem', padding: '0.5rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                      {raceForm.teams.map(t => (
-                        <span key={t.id} style={{ background: 'rgba(242, 24, 24, 0.2)', border: '1px solid var(--accent-primary)', padding: '0.25rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          {t.name}
-                          <button onClick={() => setRaceForm({...raceForm, teams: raceForm.teams.filter(team => team.id !== t.id)})} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: 0 }}>×</button>
-                        </span>
-                      ))}
-                      <select 
-                        style={{ background: 'transparent', border: 'none', color: '#fff', outline: 'none', flex: 1, minWidth: '120px' }} 
-                        value="" 
-                        onChange={e => {
-                          const teamId = e.target.value;
-                          if (!teamId) return;
-                          const teamObj = allRacers.find(r => r.id === teamId);
-                          if (teamObj && !raceForm.teams.some(t => t.id === teamId)) {
-                            setRaceForm({...raceForm, teams: [...raceForm.teams, teamObj]});
-                          }
-                        }}
-                      >
-                        <option value="" style={{ color: '#000' }}>+ Add Team</option>
-                        {allRacers.filter(r => r.type === 'TEAM' && !raceForm.teams.some(t => t.id === r.id)).map(t => (
-                          <option key={t.id} value={t.id} style={{ color: '#000' }}>{t.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                      <label className="text-mono" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>SELECT RACERS</label>
-                      <button 
-                        onClick={() => {
-                          const filteredRacers = allRacers
-                            .filter(r => r.type !== 'TEAM' && !r.type?.startsWith('MONTHLY'))
-                            .filter(r => {
-                              if (raceForm.teams.length === 0) return true;
-                              return raceForm.teams.some(t => r.team_name === t.name || r.captain_name === t.name || (t.roster && t.roster.includes(r.name)));
-                            });
-                          setRaceForm({...raceForm, racers: filteredRacers});
-                        }}
-                        className="text-mono" 
-                        style={{ fontSize: '0.65rem', background: 'none', border: '1px solid #00ff88', color: '#00ff88', padding: '0.15rem 0.5rem', borderRadius: '4px', cursor: 'pointer' }}
-                      >
-                        SELECT ALL
-                      </button>
-                    </div>
-                    <div className="input-base" style={{ minHeight: '3rem', padding: '0.5rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                      {raceForm.racers.map(r => (
-                        <span key={r.id} style={{ background: 'rgba(0, 255, 136, 0.2)', border: '1px solid #00ff88', padding: '0.25rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          {r.name}
-                          <button onClick={() => setRaceForm({...raceForm, racers: raceForm.racers.filter(racer => racer.id !== r.id)})} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: 0 }}>×</button>
-                        </span>
-                      ))}
-                      <select 
-                        style={{ background: 'transparent', border: 'none', color: '#fff', outline: 'none', flex: 1, minWidth: '120px' }} 
-                        value="" 
-                        onChange={e => {
-                          const racerId = e.target.value;
-                          if (!racerId) return;
-                          const racerObj = allRacers.find(r => r.id === racerId);
-                          if (racerObj && !raceForm.racers.some(r => r.id === racerId)) {
-                            setRaceForm({...raceForm, racers: [...raceForm.racers, racerObj]});
-                          }
-                        }}
-                      >
-                        <option value="" style={{ color: '#000' }}>+ Add Racer</option>
-                        {allRacers
-                          .filter(r => r.type !== 'TEAM' && !r.type?.startsWith('MONTHLY') && !raceForm.racers.some(existing => existing.id === r.id))
-                          .filter(r => {
-                            if (raceForm.teams.length === 0) return true;
-                            return raceForm.teams.some(t => r.team_name === t.name || r.captain_name === t.name || (t.roster && t.roster.includes(r.name)));
-                          })
-                          .map(r => (
-                            <option key={r.id} value={r.id} style={{ color: '#000' }}>{r.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
 
-            <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
-              <button onClick={() => setShowCreateRacePanel(false)} className="btn-secondary" style={{ flex: 1, padding: '1rem', fontSize: '1rem' }}>CANCEL</button>
-              <button onClick={handleCreateRace} className="btn-primary" style={{ flex: 1, padding: '1rem', fontSize: '1rem' }}>CONFIRM</button>
+            {/* Modal Footer */}
+            <div style={{
+              padding: '1.25rem 2rem',
+              background: 'linear-gradient(0deg, rgba(20, 5, 5, 0.98) 0%, rgba(12, 3, 3, 0.9) 100%)',
+              borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '1rem'
+            }}>
+              <div className="text-mono" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                {raceMode === 'CREATE' ? (
+                  <>
+                    <span>Teams Enrolled: <strong style={{ color: '#fff' }}>{raceForm.teams.length}</strong></span>
+                    <span>•</span>
+                    <span>Racers Enrolled: <strong style={{ color: '#fff' }}>{raceForm.racers.length}</strong></span>
+                  </>
+                ) : (
+                  <span>Selected Round: <strong style={{ color: '#00ff88' }}>{selectedPendingRace ? `ROUND #${selectedPendingRace}` : 'NONE'}</strong></span>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                <button 
+                  type="button"
+                  onClick={() => setShowCreateRacePanel(false)} 
+                  className="btn-secondary" 
+                  style={{ padding: '0.75rem 1.5rem', fontSize: '0.85rem' }}
+                >
+                  CANCEL
+                </button>
+                <button 
+                  type="button"
+                  onClick={handleCreateRace} 
+                  className="btn-primary" 
+                  disabled={raceMode === 'CREATE' ? !raceForm.name.trim() : !selectedPendingRace}
+                  style={{ 
+                    padding: '0.75rem 2rem', 
+                    fontSize: '0.85rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    opacity: (raceMode === 'CREATE' ? !raceForm.name.trim() : !selectedPendingRace) ? 0.5 : 1
+                  }}
+                >
+                  <span>{raceMode === 'CREATE' ? '⚡ CREATE RACE EVENT' : '🚀 LAUNCH BIDDING WINDOWS'}</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

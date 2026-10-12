@@ -93,6 +93,7 @@ export default function RacerProfile() {
   const [betReceipt, setBetReceipt] = useState<{ id: string, status: string, amount: number } | null>(null);
   const [copiedReceipt, setCopiedReceipt] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [activeRace, setActiveRace] = useState<any>(null);
   const isSubmittingRef = useRef(false);
 
   useEffect(() => {
@@ -164,6 +165,17 @@ export default function RacerProfile() {
           setLoginId(profile.login_id);
           setDisplayName(profile.display_name || '');
         }
+      }
+
+      // Fetch active race settings for min bets
+      const { data: settings } = await supabase
+        .from('app_settings')
+        .select('current_round_id')
+        .eq('id', 1)
+        .single();
+      if (settings?.current_round_id) {
+        const { data: raceInfo } = await supabase.from('races').select('*').eq('id', settings.current_round_id).single();
+        if (raceInfo) setActiveRace(raceInfo);
       }
 
       // 0.5 Fetch all Individual drivers and Teams for dropdowns
@@ -376,6 +388,12 @@ export default function RacerProfile() {
 
       if (amount < minBet) {
         showError('Invalid Bet', `Bet amount must be at least $${minBet} for this participant.`);
+        return;
+      }
+
+      const requiresCid = (role === 'admin' || role === 'agent' || role === 'management') && !isStream;
+      if (requiresCid && !/^\d{4}$/.test(cid)) {
+        showError('Invalid CID', 'CID must contain exactly a 4-digit number (e.g. 1234).');
         return;
       }
 
@@ -1607,98 +1625,132 @@ export default function RacerProfile() {
       {isBidding && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.9)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div className="glass-panel animate-in" style={{ padding: '3rem', width: '90%', maxWidth: '500px', border: '1px solid var(--accent-primary)' }}>
-            <h2 className="title-gradient" style={{ fontSize: '2rem', marginBottom: '2rem', textTransform: 'uppercase' }}>LOG WINNING BET</h2>
+            <h2 className="title-gradient" style={{ fontSize: '2rem', marginBottom: '1rem', textTransform: 'uppercase', textAlign: 'center' }}>LOG WINNING BET</h2>
             
-            <form onSubmit={handleBid} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginBottom: '2rem' }}>
-              <div>
-                <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem' }}>BET AMOUNT ($)</label>
-                <input 
-                  type="number" 
-                  className="input-base" 
-                  value={bidAmount}
-                  onChange={(e) => setBidAmount(e.target.value)}
-                  placeholder="Enter winning bet..."
-                  style={{ width: '100%' }}
-                  required
-                  autoFocus
-                />
-              </div>
+            {(() => {
+              const minBet = racer?.type === 'TEAM' ? (activeRace?.team_min_bet || 0) : (activeRace?.racer_min_bet || 0);
+              const requiresCid = (role === 'admin' || role === 'agent' || role === 'management') && !isStream;
+              const isCidValid = !requiresCid || /^\d{4}$/.test(cid);
+              const isBetValid = Number(bidAmount) >= minBet && isCidValid;
 
-              <div>
-                <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem' }}>POSITION PREDICTION</label>
-                <select 
-                  className="input-base" 
-                  value={positionPrediction}
-                  onChange={(e) => setPositionPrediction(e.target.value)}
-                  style={{ width: '100%', appearance: 'none', background: 'rgba(0,0,0,0.5)', cursor: 'pointer' }}
-                  required
-                >
-                  <option value="" disabled>-- SELECT POSITION --</option>
-                  {racer?.type === 'TEAM' ? (
-                    ['1-3', '4-6', '7-9', '10-13', '13-15'].map(opt => (
-                      <option key={opt} value={opt}>{opt}</option>
-                    ))
-                  ) : (
-                    [
-                      { label: '1 (1.5x)', value: '1' },
-                      { label: '2-3 (1.4x)', value: '2-3' },
-                      { label: '4-6 (1.3x)', value: '4-6' },
-                      { label: '6-10 (1.2x)', value: '6-10' },
-                      { label: '11-15 (1.1x)', value: '11-15' },
-                    ].map(opt => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))
-                  )}
-                </select>
-              </div>
-
-              {(role === 'admin' || role === 'agent' || role === 'management') && !isStream && (
+              return (
                 <>
-                  <div>
-                    <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem' }}>BETTOR NAME</label>
-                    <input 
-                      type="text" 
-                      className="input-base" 
-                      value={bettorName}
-                      onChange={(e) => setBettorName(e.target.value)}
-                      placeholder="Enter bettor's name..."
-                      style={{ width: '100%' }}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem' }}>CID</label>
-                    <input 
-                      type="text" 
-                      className="input-base" 
-                      value={cid}
-                      onChange={(e) => setCid(e.target.value)}
-                      placeholder="Enter CID..."
-                      style={{ width: '100%' }}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem' }}>IMAGE LINK (RECEIPT)</label>
-                    <input 
-                      type="url" 
-                      className="input-base" 
-                      value={imageLink}
-                      onChange={(e) => setImageLink(e.target.value)}
-                      placeholder="https://..."
-                      style={{ width: '100%' }}
-                    />
-                  </div>
-                </>
-              )}
+                  <p className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', marginBottom: '2rem' }}>
+                    Minimum bet required: ${minBet}
+                  </p>
 
-              <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
-                <button type="button" className="btn-secondary" onClick={() => setIsBidding(false)} disabled={isSubmitting}>CANCEL</button>
-                <button type="submit" className="btn-primary" disabled={isSubmitting}>
-                  {isSubmitting ? 'CONFIRMING...' : 'CONFIRM BET'}
-                </button>
-              </div>
-            </form>
+                  <form onSubmit={handleBid} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginBottom: '2rem' }}>
+                    <div>
+                      <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>BET AMOUNT ($)</label>
+                      <input 
+                        type="number" 
+                        className="input-base" 
+                        value={bidAmount}
+                        onChange={(e) => setBidAmount(e.target.value)}
+                        placeholder={`Minimum bet: $${minBet}`}
+                        min={minBet}
+                        style={{ width: '100%' }}
+                        required
+                        autoFocus
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>POSITION PREDICTION</label>
+                      <select 
+                        className="input-base" 
+                        value={positionPrediction}
+                        onChange={(e) => setPositionPrediction(e.target.value)}
+                        style={{ width: '100%', appearance: 'none', background: 'rgba(0,0,0,0.5)', cursor: 'pointer' }}
+                        required
+                      >
+                        <option value="" disabled>-- SELECT POSITION --</option>
+                        {racer?.type === 'TEAM' ? (
+                          ['1-3', '4-6', '7-9', '10-13', '13-15'].map(opt => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))
+                        ) : (
+                          [
+                            { label: '1 (1.5x)', value: '1' },
+                            { label: '2-3 (1.4x)', value: '2-3' },
+                            { label: '4-6 (1.3x)', value: '4-6' },
+                            { label: '6-10 (1.2x)', value: '6-10' },
+                            { label: '11-15 (1.1x)', value: '11-15' },
+                          ].map(opt => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))
+                        )}
+                      </select>
+                    </div>
+
+                    {requiresCid && (
+                      <>
+                        <div>
+                          <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>BETTOR NAME</label>
+                          <input 
+                            type="text" 
+                            className="input-base" 
+                            value={bettorName}
+                            onChange={(e) => setBettorName(e.target.value)}
+                            placeholder="Enter bettor's name..."
+                            style={{ width: '100%' }}
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>CID</label>
+                          <input 
+                            type="text" 
+                            inputMode="numeric"
+                            pattern="[0-9]{4}"
+                            maxLength={4}
+                            className="input-base text-mono" 
+                            value={cid}
+                            onChange={(e) => setCid(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                            placeholder="4-digit CID (e.g. 1234)"
+                            style={{ width: '100%' }}
+                            required
+                          />
+                          {cid.length > 0 && cid.length < 4 && (
+                            <span className="text-mono" style={{ color: '#ff4444', fontSize: '0.65rem', marginTop: '4px', display: 'block' }}>
+                              CID must be exactly 4 digits ({cid.length}/4)
+                            </span>
+                          )}
+                          {cid.length === 4 && (
+                            <span className="text-mono" style={{ color: '#00ff88', fontSize: '0.65rem', marginTop: '4px', display: 'block' }}>
+                              ✓ 4-digit CID verified
+                            </span>
+                          )}
+                        </div>
+                        <div>
+                          <label className="text-mono" style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>IMAGE LINK (RECEIPT)</label>
+                          <input 
+                            type="url" 
+                            className="input-base" 
+                            value={imageLink}
+                            onChange={(e) => setImageLink(e.target.value)}
+                            placeholder="https://..."
+                            style={{ width: '100%' }}
+                          />
+                        </div>
+                      </>
+                    )}
+
+                    <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
+                      <button type="button" className="btn-secondary" onClick={() => setIsBidding(false)} disabled={isSubmitting}>CANCEL</button>
+                      <button 
+                        type="submit" 
+                        className="btn-primary" 
+                        disabled={!isBetValid || isSubmitting}
+                        style={{ opacity: isBetValid && !isSubmitting ? 1 : 0.5 }}
+                      >
+                        {isSubmitting ? 'CONFIRMING...' : 'CONFIRM BET'}
+                      </button>
+                    </div>
+                  </form>
+                </>
+              );
+            })()}
           </div>
         </div>
       )}

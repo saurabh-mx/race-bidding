@@ -74,11 +74,80 @@ export default function Dashboard() {
   const [betReceipt, setBetReceipt] = useState<{ id: string; status: string; amount: number; racerName?: string } | null>(null);
   const [copiedReceipt, setCopiedReceipt] = useState(false);
 
+  const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
+  const [searchModalQuery, setSearchModalQuery] = useState('');
+  const [searchModalFilter, setSearchModalFilter] = useState<'ALL' | 'TEAM' | 'CAPTAIN' | 'RACER' | 'MONTHLY'>('ALL');
+  const [highlightedRacerId, setHighlightedRacerId] = useState<string | null>(null);
+  const [terminalSearchQuery, setTerminalSearchQuery] = useState('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     if (sessionStorage.getItem('securityVerified') === 'true') {
       setIsSecurityVerified(true);
     }
   }, []);
+
+  useEffect(() => {
+    if (isSearchModalOpen) {
+      setTimeout(() => {
+        searchInputRef.current?.focus();
+      }, 50);
+    }
+  }, [isSearchModalOpen]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsSearchModalOpen(prev => !prev);
+      } else if (e.key === '/' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+        setIsSearchModalOpen(true);
+      } else if (e.key === 'Escape' && isSearchModalOpen) {
+        setIsSearchModalOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isSearchModalOpen]);
+
+  const handleJumpToRacer = (racer: Racer) => {
+    setIsSearchModalOpen(false);
+
+    if (racer.type === 'TEAM') {
+      if (activeTab !== 'ALL' && activeTab !== 'TEAM') {
+        setActiveTab('TEAM');
+      }
+    } else if (racer.type === 'MONTHLY_RACER') {
+      if (activeTab !== 'MONTHLY') {
+        setActiveTab('MONTHLY');
+      }
+    } else if (racer.type === 'CAPTAIN' || racer.racer_role === 'CAPTAIN') {
+      if (activeTab !== 'ALL' && activeTab !== 'CAPTAIN') {
+        setActiveTab('CAPTAIN');
+      }
+    } else {
+      if (activeTab !== 'ALL' && activeTab !== 'CAPTAIN' && activeTab !== 'INDIVIDUAL') {
+        setActiveTab('ALL');
+      }
+    }
+
+    if (terminalSearchQuery) {
+      setTerminalSearchQuery('');
+    }
+
+    setHighlightedRacerId(racer.id);
+    setTimeout(() => {
+      const el = document.getElementById(`racer-card-${racer.id}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 120);
+
+    setTimeout(() => {
+      setHighlightedRacerId(null);
+    }, 3000);
+  };
 
   const { showError, showConfirm } = useModal();
 
@@ -174,6 +243,11 @@ export default function Dashboard() {
     const racer = data.find(r => r.id === biddingId);
     if (!racer || amount <= 0) {
       showError('Invalid Bet', "Bet amount must be greater than zero.");
+      return;
+    }
+
+    if (!/^\d{4}$/.test(cid)) {
+      showError('Invalid CID', 'CID must contain exactly a 4-digit number (e.g. 1234).');
       return;
     }
 
@@ -345,7 +419,8 @@ export default function Dashboard() {
     return (
       <div 
         key={racer.id} 
-        className={`glass-panel bid-card animate-in stagger-${(index % 3) + 1}`} 
+        id={`racer-card-${racer.id}`}
+        className={`glass-panel bid-card animate-in stagger-${(index % 3) + 1} ${highlightedRacerId === racer.id ? 'search-highlight-card' : ''}`} 
         style={{ 
           padding: '2rem', 
           display: 'flex', 
@@ -354,8 +429,8 @@ export default function Dashboard() {
           cursor: 'pointer', 
           minHeight: '350px',
           position: 'relative',
-          border: '1px solid rgba(242, 24, 24, 0.3)',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5), inset 0 0 20px rgba(242, 24, 24, 0.05)',
+          border: highlightedRacerId === racer.id ? '1px solid var(--accent-primary)' : '1px solid rgba(242, 24, 24, 0.3)',
+          boxShadow: highlightedRacerId === racer.id ? '0 0 30px rgba(242, 24, 24, 0.4)' : '0 8px 32px rgba(0, 0, 0, 0.5), inset 0 0 20px rgba(242, 24, 24, 0.05)',
           overflow: 'hidden',
           transition: 'all 0.3s ease'
         }}
@@ -590,29 +665,125 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
-          {['ALL', 'TEAM', 'CAPTAIN', 'MONTHLY'].map(tab => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab as any)}
-              className={activeTab === tab ? 'btn-primary' : 'btn-secondary'}
-              style={{ padding: '0.75rem 1.5rem', fontSize: '0.85rem' }}
-            >
-              {tab === 'ALL' ? 'ALL BETS' : `${tab} BETS`}
-            </button>
-          ))}
-        </div>
+        {(() => {
+          const matchesTerminalSearch = (r: Racer) => {
+            if (!terminalSearchQuery.trim()) return true;
+            const q = terminalSearchQuery.toLowerCase().trim();
+            return (
+              r.name.toLowerCase().includes(q) ||
+              (r.team_name && r.team_name.toLowerCase().includes(q)) ||
+              (r.captain_name && r.captain_name.toLowerCase().includes(q)) ||
+              (r.racer_role && r.racer_role.toLowerCase().includes(q)) ||
+              (r.roster && r.roster.some(m => m.toLowerCase().includes(q)))
+            );
+          };
 
-        <div className="grid-3">
-          {data.filter(r => r.is_posted === true && ((activeTab === 'ALL' && !r.type.startsWith('MONTHLY_')) || ((activeTab === 'CAPTAIN' || activeTab === 'INDIVIDUAL') && r.type !== 'TEAM' && !r.type.startsWith('MONTHLY_')) || (activeTab === 'MONTHLY' && r.type === 'MONTHLY_RACER') || r.type === activeTab)).length === 0 ? (
-             <div className="glass-panel text-mono animate-in" style={{ gridColumn: '1 / -1', padding: '4rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-                NO ACTIVE BETS DETECTED.<br/><br/>
-                AWAITING AGENT TO POST BETS.
-             </div>
-          ) : (
-            data.filter(r => r.is_posted === true && ((activeTab === 'ALL' && !r.type.startsWith('MONTHLY_')) || ((activeTab === 'CAPTAIN' || activeTab === 'INDIVIDUAL') && r.type !== 'TEAM' && !r.type.startsWith('MONTHLY_')) || (activeTab === 'MONTHLY' && r.type === 'MONTHLY_RACER') || r.type === activeTab)).map((racer, idx) => renderCard(racer, idx))
-          )}
-        </div>
+          const filteredData = data.filter(r => 
+            r.is_posted === true && 
+            matchesTerminalSearch(r) && 
+            (
+              (activeTab === 'ALL' && !r.type.startsWith('MONTHLY_')) || 
+              ((activeTab === 'CAPTAIN' || activeTab === 'INDIVIDUAL') && r.type !== 'TEAM' && !r.type.startsWith('MONTHLY_')) || 
+              (activeTab === 'MONTHLY' && r.type === 'MONTHLY_RACER') || 
+              r.type === activeTab
+            )
+          );
+
+          return (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
+                <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                  {['ALL', 'TEAM', 'CAPTAIN', 'MONTHLY'].map(tab => (
+                    <button
+                      key={tab}
+                      onClick={() => setActiveTab(tab as any)}
+                      className={activeTab === tab ? 'btn-primary' : 'btn-secondary'}
+                      style={{ padding: '0.75rem 1.5rem', fontSize: '0.85rem' }}
+                    >
+                      {tab === 'ALL' ? 'ALL BETS' : `${tab} BETS`}
+                    </button>
+                  ))}
+
+                  {terminalSearchQuery && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(242,24,24,0.15)', border: '1px solid var(--accent-primary)', padding: '0.5rem 0.85rem', borderRadius: '4px' }}>
+                      <span className="text-mono" style={{ fontSize: '0.75rem', color: '#fff' }}>
+                        FILTER: <strong style={{ color: 'var(--accent-secondary)' }}>"{terminalSearchQuery}"</strong>
+                      </span>
+                      <button
+                        onClick={() => setTerminalSearchQuery('')}
+                        style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '0.85rem', lineHeight: 1 }}
+                        title="Clear filter"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <button
+                    onClick={() => {
+                      setSearchModalQuery('');
+                      setIsSearchModalOpen(true);
+                    }}
+                    className="btn-secondary"
+                    style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '0.6rem', 
+                      padding: '0.75rem 1.3rem', 
+                      fontSize: '0.85rem',
+                      borderColor: 'rgba(255, 255, 255, 0.25)',
+                      background: 'rgba(25, 6, 6, 0.8)',
+                      cursor: 'pointer'
+                    }}
+                    title="Search participants (Ctrl+K or /)"
+                  >
+                    <span style={{ fontSize: '0.95rem' }}>🔍</span>
+                    <span className="text-mono" style={{ letterSpacing: '1px', fontWeight: 'bold' }}>SEARCH</span>
+                    <kbd style={{ 
+                      fontSize: '0.65rem', 
+                      background: 'rgba(255,255,255,0.1)', 
+                      border: '1px solid rgba(255,255,255,0.2)', 
+                      borderRadius: '4px', 
+                      padding: '2px 6px', 
+                      color: 'var(--text-muted)', 
+                      fontFamily: 'monospace' 
+                    }}>
+                      Ctrl+K
+                    </kbd>
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid-3">
+                {filteredData.length === 0 ? (
+                  <div className="glass-panel text-mono animate-in" style={{ gridColumn: '1 / -1', padding: '4rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                    {terminalSearchQuery ? (
+                      <>
+                        NO PARTICIPANTS FOUND MATCHING "{terminalSearchQuery}".<br/><br/>
+                        <button 
+                          className="btn-secondary" 
+                          onClick={() => setTerminalSearchQuery('')}
+                          style={{ padding: '0.5rem 1rem', fontSize: '0.75rem', marginTop: '0.5rem' }}
+                        >
+                          CLEAR SEARCH FILTER
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        NO ACTIVE BETS DETECTED.<br/><br/>
+                        AWAITING AGENT TO POST BETS.
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  filteredData.map((racer, idx) => renderCard(racer, idx))
+                )}
+              </div>
+            </>
+          );
+        })()}
         </div>
 
         {/* BET POOLS SIDEBAR */}
@@ -629,7 +800,8 @@ export default function Dashboard() {
             {(() => {
               const r = data.find(r => r.id === biddingId);
               const minBet = r?.type === 'TEAM' ? (activeRace?.team_min_bet || 0) : (activeRace?.racer_min_bet || 0);
-              const isBetValid = Number(bidAmount) >= minBet;
+              const isCidValid = /^\d{4}$/.test(cid);
+              const isBetValid = Number(bidAmount) >= minBet && isCidValid;
               
               return (
                 <>
@@ -644,7 +816,8 @@ export default function Dashboard() {
                   type="number" 
                   value={bidAmount}
                   onChange={(e: any) => setBidAmount(e.target.value)}
-                  placeholder="Enter bet amount..."
+                  placeholder={`Minimum bet: $${minBet}`}
+                  min={minBet}
                   required
                   autoFocus
                 />
@@ -691,9 +864,14 @@ export default function Dashboard() {
                 label="CID"
                 id="cid"
                 type="text" 
+                inputMode="numeric"
+                pattern="[0-9]{4}"
+                maxLength={4}
                 value={cid}
-                onChange={(e: any) => setCid(e.target.value)}
-                placeholder="Enter CID..."
+                onChange={(e: any) => setCid(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                placeholder="4-digit CID (e.g. 1234)"
+                error={cid.length > 0 && cid.length < 4 ? `CID must be exactly 4 digits (${cid.length}/4)` : undefined}
+                helperText={cid.length === 4 ? "✓ 4-digit CID verified" : undefined}
                 required
               />
 
@@ -933,6 +1111,351 @@ export default function Dashboard() {
                 <span>VERIFY ACCESS</span>
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* SEARCH PARTICIPANT MODAL */}
+      {isSearchModalOpen && (
+        <div 
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsSearchModalOpen(false);
+          }}
+          style={{ 
+            position: 'fixed', 
+            top: 0, left: 0, right: 0, bottom: 0, 
+            background: 'rgba(0,0,0,0.85)', 
+            backdropFilter: 'blur(12px)', 
+            zIndex: 9999, 
+            display: 'flex', 
+            alignItems: 'flex-start', 
+            justifyContent: 'center', 
+            paddingTop: '6vh',
+            paddingBottom: '3vh'
+          }}
+        >
+          <div 
+            className="glass-panel animate-in" 
+            style={{ 
+              width: '94%', 
+              maxWidth: '750px', 
+              maxHeight: '88vh',
+              display: 'flex', 
+              flexDirection: 'column', 
+              border: '1px solid var(--accent-primary)', 
+              boxShadow: '0 0 40px rgba(242, 24, 24, 0.35)',
+              borderRadius: '8px',
+              overflow: 'hidden'
+            }}
+          >
+            {/* Header with Search Input */}
+            <div style={{ padding: '1.5rem 1.75rem', borderBottom: '1px solid rgba(255,255,255,0.1)', background: 'rgba(15, 3, 3, 0.9)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <span style={{ fontSize: '1.25rem' }}>🔍</span>
+                  <h3 className="title-gradient" style={{ fontSize: '1.25rem', letterSpacing: '1px' }}>
+                    SEARCH PARTICIPANTS
+                  </h3>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <span className="text-mono" style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                    [ESC to close]
+                  </span>
+                  <button 
+                    onClick={() => setIsSearchModalOpen(false)}
+                    style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '1.25rem', cursor: 'pointer', lineHeight: 1 }}
+                    title="Close (Esc)"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+
+              {/* Search input field */}
+              <div style={{ position: 'relative' }}>
+                <input 
+                  ref={searchInputRef}
+                  type="text"
+                  className="input-base text-mono"
+                  placeholder="Type racer, team, or captain name..."
+                  value={searchModalQuery}
+                  onChange={(e) => setSearchModalQuery(e.target.value)}
+                  style={{
+                    width: '100%',
+                    paddingLeft: '1rem',
+                    paddingRight: '2.5rem',
+                    fontSize: '1rem',
+                    background: 'rgba(0,0,0,0.7)',
+                    borderColor: 'rgba(242,24,24,0.4)',
+                    boxShadow: 'inset 0 0 10px rgba(242,24,24,0.1)'
+                  }}
+                  autoFocus
+                />
+                {searchModalQuery && (
+                  <button
+                    onClick={() => setSearchModalQuery('')}
+                    style={{
+                      position: 'absolute',
+                      right: '12px',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--text-muted)',
+                      cursor: 'pointer',
+                      fontSize: '1rem'
+                    }}
+                    title="Clear query"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+
+              {/* Filter Tabs */}
+              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem', flexWrap: 'wrap' }}>
+                {(['ALL', 'TEAM', 'CAPTAIN', 'RACER', 'MONTHLY'] as const).map(tab => {
+                  const isActive = searchModalFilter === tab;
+                  return (
+                    <button
+                      key={tab}
+                      onClick={() => setSearchModalFilter(tab)}
+                      className="text-mono"
+                      style={{
+                        padding: '0.35rem 0.8rem',
+                        fontSize: '0.75rem',
+                        background: isActive ? 'var(--accent-primary)' : 'rgba(255,255,255,0.05)',
+                        color: isActive ? '#fff' : 'var(--text-muted)',
+                        border: isActive ? '1px solid var(--accent-primary)' : '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontWeight: isActive ? 'bold' : 'normal',
+                        transition: 'all 0.2s'
+                      }}
+                    >
+                      {tab === 'ALL' ? 'ALL' : tab === 'TEAM' ? 'TEAMS' : tab === 'CAPTAIN' ? 'CAPTAINS' : tab === 'RACER' ? 'DRIVERS' : 'MONTHLY'}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Results List */}
+            <div style={{ 
+              flex: 1, 
+              overflowY: 'auto', 
+              padding: '1.25rem 1.75rem', 
+              display: 'flex', 
+              flexDirection: 'column', 
+              gap: '0.75rem',
+              maxHeight: '52vh'
+            }}>
+              {(() => {
+                const q = searchModalQuery.toLowerCase().trim();
+                const matchedRacers = data.filter(r => {
+                  const matchesText = !q || 
+                    r.name.toLowerCase().includes(q) || 
+                    (r.team_name && r.team_name.toLowerCase().includes(q)) ||
+                    (r.captain_name && r.captain_name.toLowerCase().includes(q)) ||
+                    (r.racer_role && r.racer_role.toLowerCase().includes(q)) ||
+                    (r.roster && r.roster.some(m => m.toLowerCase().includes(q)));
+                  
+                  if (!matchesText) return false;
+
+                  if (searchModalFilter === 'TEAM') return r.type === 'TEAM';
+                  if (searchModalFilter === 'CAPTAIN') return r.type === 'CAPTAIN' || r.racer_role === 'CAPTAIN' || (r.type !== 'TEAM' && !r.type.startsWith('MONTHLY_') && r.captain_name === r.name);
+                  if (searchModalFilter === 'RACER') return r.type !== 'TEAM' && !r.type.startsWith('MONTHLY_') && r.racer_role !== 'CAPTAIN';
+                  if (searchModalFilter === 'MONTHLY') return r.type.startsWith('MONTHLY_') || r.type === 'MONTHLY_RACER';
+                  return true;
+                });
+
+                if (matchedRacers.length === 0) {
+                  return (
+                    <div style={{ padding: '3rem 1rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                      <p className="text-mono" style={{ fontSize: '0.9rem', marginBottom: '0.75rem' }}>
+                        NO PARTICIPANTS FOUND MATCHING "{searchModalQuery}"
+                      </p>
+                      <p className="text-mono" style={{ fontSize: '0.75rem', opacity: 0.7 }}>
+                        Try searching by first name, team name, or clearing filters.
+                      </p>
+                    </div>
+                  );
+                }
+
+                return matchedRacers.map(racer => {
+                  const isTeam = racer.type === 'TEAM';
+                  const isWindowOpen = racer.type === 'TEAM' 
+                    ? isTeamBettingOpen 
+                    : (racer.type === 'MONTHLY_RACER' ? isMonthlyBettingOpen : isIndBettingOpen);
+                  const canBet = isWindowOpen || role === 'admin';
+
+                  return (
+                    <div 
+                      key={racer.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '1rem',
+                        padding: '1rem',
+                        background: 'rgba(255,255,255,0.03)',
+                        border: '1px solid rgba(255,255,255,0.08)',
+                        borderRadius: '6px',
+                        transition: 'all 0.2s',
+                        flexWrap: 'wrap'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'rgba(255,255,255,0.07)';
+                        e.currentTarget.style.borderColor = 'rgba(242,24,24,0.4)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'rgba(255,255,255,0.03)';
+                        e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)';
+                      }}
+                    >
+                      {/* Left: Info */}
+                      <div style={{ flex: 1, minWidth: '220px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.35rem', flexWrap: 'wrap' }}>
+                          <span 
+                            className="text-mono" 
+                            style={{ 
+                              fontSize: '0.65rem',
+                              fontWeight: 'bold',
+                              padding: '2px 6px',
+                              borderRadius: '3px',
+                              background: isTeam ? 'rgba(255,255,255,0.1)' : (racer.type === 'CAPTAIN' || racer.racer_role === 'CAPTAIN' ? 'rgba(255, 179, 0, 0.15)' : 'rgba(242, 24, 24, 0.2)'),
+                              color: isTeam ? '#fff' : (racer.type === 'CAPTAIN' || racer.racer_role === 'CAPTAIN' ? '#ffb300' : 'var(--accent-secondary)'),
+                              border: `1px solid ${isTeam ? 'rgba(255,255,255,0.2)' : (racer.type === 'CAPTAIN' || racer.racer_role === 'CAPTAIN' ? '#ffb300' : 'var(--accent-primary)')}`
+                            }}
+                          >
+                            {racer.type === 'TEAM' ? 'TEAM' : (racer.type === 'CAPTAIN' || racer.racer_role === 'CAPTAIN' ? 'CAPTAIN' : (racer.type === 'MONTHLY_RACER' ? 'MONTHLY' : 'RACER'))}
+                          </span>
+
+                          {racer.is_posted ? (
+                            <span className="text-mono" style={{ fontSize: '0.65rem', color: '#00ff88', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#00ff88', display: 'inline-block' }}></span>
+                              POSTED ON TERMINAL
+                            </span>
+                          ) : (
+                            <span className="text-mono" style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
+                              NOT POSTED
+                            </span>
+                          )}
+
+                          <span className="text-mono" style={{ fontSize: '0.65rem', color: isWindowOpen ? '#00ff88' : '#ff4444' }}>
+                            • {isWindowOpen ? 'BETS OPEN' : 'BETS CLOSED'}
+                          </span>
+                        </div>
+
+                        <h4 style={{ fontSize: '1.1rem', fontWeight: 900, fontStyle: 'italic', color: '#fff', letterSpacing: '0.5px' }}>
+                          {racer.name}
+                        </h4>
+
+                        {racer.team_name && !isTeam && (
+                          <p className="text-mono" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                            TEAM: <span style={{ color: '#fff' }}>{racer.team_name}</span>
+                          </p>
+                        )}
+                        {isTeam && racer.captain_name && (
+                          <p className="text-mono" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                            CAPTAIN: <span style={{ color: '#ffb300' }}>{racer.captain_name}</span>
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Middle: Current Bet */}
+                      <div style={{ textAlign: 'right', marginRight: '0.5rem' }}>
+                        <span className="text-mono" style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'block' }}>
+                          CURRENT BET
+                        </span>
+                        <span className="text-mono" style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--accent-primary)' }}>
+                          ${racer.current_bid.toLocaleString()}
+                        </span>
+                      </div>
+
+                      {/* Right: Actions */}
+                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        <button
+                          onClick={() => handleJumpToRacer(racer)}
+                          className="btn-secondary"
+                          style={{ 
+                            padding: '0.5rem 0.85rem', 
+                            fontSize: '0.75rem', 
+                            borderColor: 'var(--accent-primary)',
+                            color: '#fff',
+                            whiteSpace: 'nowrap'
+                          }}
+                          title="Scroll and highlight card on terminal"
+                        >
+                          📍 JUMP TO CARD
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            setIsSearchModalOpen(false);
+                            setBiddingId(racer.id);
+                            setBidAmount('');
+                          }}
+                          className={canBet ? "btn-primary" : "btn-secondary"}
+                          disabled={!canBet}
+                          style={{ 
+                            padding: '0.5rem 0.85rem', 
+                            fontSize: '0.75rem',
+                            opacity: canBet ? 1 : 0.5,
+                            whiteSpace: 'nowrap'
+                          }}
+                          title={canBet ? "Place bet on this participant" : "Betting window is closed"}
+                        >
+                          {canBet ? 'PLACE BET' : 'CLOSED'}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{ 
+              padding: '1rem 1.75rem', 
+              borderTop: '1px solid rgba(255,255,255,0.1)', 
+              background: 'rgba(15, 3, 3, 0.95)',
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '0.75rem'
+            }}>
+              <p className="text-mono" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                {searchModalQuery ? (
+                  <>Found matching participants. Click <strong>JUMP</strong> to locate on the terminal.</>
+                ) : (
+                  <>Showing all participants. Use search to filter quickly.</>
+                )}
+              </p>
+
+              <div style={{ display: 'flex', gap: '0.75rem' }}>
+                {searchModalQuery && (
+                  <button
+                    onClick={() => {
+                      setTerminalSearchQuery(searchModalQuery);
+                      setIsSearchModalOpen(false);
+                    }}
+                    className="btn-secondary"
+                    style={{ padding: '0.5rem 1rem', fontSize: '0.75rem', borderColor: 'var(--accent-secondary)' }}
+                  >
+                    FILTER TERMINAL BY "{searchModalQuery}"
+                  </button>
+                )}
+                <button
+                  onClick={() => setIsSearchModalOpen(false)}
+                  className="btn-secondary"
+                  style={{ padding: '0.5rem 1rem', fontSize: '0.75rem' }}
+                >
+                  CLOSE
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
