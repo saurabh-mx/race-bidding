@@ -32,7 +32,11 @@ export function GlobalTimer() {
   const [showCreateRacePanel, setShowCreateRacePanel] = useState(false);
   const [raceMode, setRaceMode] = useState<'CREATE'|'START_BIDDING'>('CREATE');
   const [pendingRaces, setPendingRaces] = useState<any[]>([]);
+  const [createdRaces, setCreatedRaces] = useState<any[]>([]);
   const [selectedPendingRace, setSelectedPendingRace] = useState<string>('');
+  const [selectedRaceToCopy, setSelectedRaceToCopy] = useState<string>('');
+  const [selectedRaceToCopyTeams, setSelectedRaceToCopyTeams] = useState<string>('');
+  const [copyFeedback, setCopyFeedback] = useState<string>('');
   const [raceForm, setRaceForm] = useState<{name: string, track: string, teamTimer: string, racerTimer: string, teamMinBet: string, racerMinBet: string, teams: any[], racers: any[]}>({ name: '', track: '', teamTimer: '', racerTimer: '', teamMinBet: '', racerMinBet: '', teams: [], racers: [] });
   const [showTimersOnStream, setShowTimersOnStream] = useState(true);
   const [teamSelectorSearch, setTeamSelectorSearch] = useState('');
@@ -550,8 +554,15 @@ export function GlobalTimer() {
     setShowCreateRacePanel(true);
     setTeamSelectorSearch('');
     setRacerSelectorSearch('');
-    const { data } = await supabase.from('racers').select('*').order('name');
-    if (data) setAllRacers(data);
+    setSelectedRaceToCopy('');
+    setSelectedRaceToCopyTeams('');
+    setCopyFeedback('');
+
+    const { data: racersData } = await supabase.from('racers').select('*').order('name');
+    if (racersData) setAllRacers(racersData);
+
+    const { data: allRaces } = await supabase.from('races').select('*').order('id', { ascending: false });
+    if (allRaces) setCreatedRaces(allRaces);
     
     if (mode === 'START_BIDDING') {
       const { data: pending } = await supabase.from('races').select('*').eq('status', 'PENDING').order('created_at', { ascending: false });
@@ -562,6 +573,114 @@ export function GlobalTimer() {
     }
     
     setRaceForm({ name: '', track: '', teamTimer: '', racerTimer: '', teamMinBet: '', racerMinBet: '', teams: [], racers: [] });
+  };
+
+  const applyCopyRacers = (raceId: string, append: boolean = false) => {
+    if (!raceId) {
+      setSelectedRaceToCopy('');
+      return;
+    }
+    setSelectedRaceToCopy(raceId);
+    const sourceRace = createdRaces.find(r => r.id.toString() === raceId);
+    if (!sourceRace) return;
+
+    const targetRacerIds: string[] = sourceRace.racers || [];
+    const targetTeamIds: string[] = sourceRace.teams || [];
+
+    const matchedRacers = allRacers.filter(r => 
+      targetRacerIds.includes(r.id) || targetRacerIds.includes(String(r.id))
+    );
+    const matchedTeams = allRacers.filter(r => 
+      r.type === 'TEAM' && (targetTeamIds.includes(r.id) || targetTeamIds.includes(String(r.id)))
+    );
+
+    setRaceForm(prev => {
+      let newRacers: any[];
+      if (append) {
+        const existingIds = new Set(prev.racers.map(r => r.id));
+        const toAdd = matchedRacers.filter(r => !existingIds.has(r.id));
+        newRacers = [...prev.racers, ...toAdd];
+      } else {
+        newRacers = matchedRacers;
+      }
+
+      let newTeams = prev.teams;
+      if (!append) {
+        if (matchedTeams.length > 0) {
+          newTeams = matchedTeams;
+        } else {
+          newTeams = [];
+        }
+      } else if (matchedTeams.length > 0) {
+        const existingTeamIds = new Set(prev.teams.map(t => t.id));
+        const teamsToAdd = matchedTeams.filter(t => !existingTeamIds.has(t.id));
+        newTeams = [...prev.teams, ...teamsToAdd];
+      }
+
+      return {
+        ...prev,
+        racers: newRacers,
+        teams: newTeams
+      };
+    });
+
+    const count = matchedRacers.length;
+    setCopyFeedback(`✓ ${append ? 'Added' : 'Copied'} ${count} racers from #${sourceRace.id}`);
+    setTimeout(() => setCopyFeedback(''), 4000);
+  };
+
+  const applyCopyTeams = (raceId: string) => {
+    if (!raceId) {
+      setSelectedRaceToCopyTeams('');
+      return;
+    }
+    setSelectedRaceToCopyTeams(raceId);
+    const sourceRace = createdRaces.find(r => r.id.toString() === raceId);
+    if (!sourceRace) return;
+
+    const targetTeamIds: string[] = sourceRace.teams || [];
+    const matchedTeams = allRacers.filter(r => 
+      r.type === 'TEAM' && (targetTeamIds.includes(r.id) || targetTeamIds.includes(String(r.id)))
+    );
+
+    setRaceForm(prev => ({
+      ...prev,
+      teams: matchedTeams
+    }));
+
+    setCopyFeedback(`✓ Copied ${matchedTeams.length} teams from #${sourceRace.id}`);
+    setTimeout(() => setCopyFeedback(''), 4000);
+  };
+
+  const applyCloneRace = (raceId: string) => {
+    if (!raceId) return;
+    const sourceRace = createdRaces.find(r => r.id.toString() === raceId);
+    if (!sourceRace) return;
+
+    const targetRacerIds: string[] = sourceRace.racers || [];
+    const targetTeamIds: string[] = sourceRace.teams || [];
+
+    const matchedRacers = allRacers.filter(r => 
+      targetRacerIds.includes(r.id) || targetRacerIds.includes(String(r.id))
+    );
+    const matchedTeams = allRacers.filter(r => 
+      r.type === 'TEAM' && (targetTeamIds.includes(r.id) || targetTeamIds.includes(String(r.id)))
+    );
+
+    setRaceForm({
+      name: sourceRace.name ? `${sourceRace.name} (Copy)` : '',
+      track: sourceRace.track || '',
+      teamTimer: sourceRace.team_timer ? String(sourceRace.team_timer) : '',
+      racerTimer: sourceRace.racer_timer ? String(sourceRace.racer_timer) : '',
+      teamMinBet: sourceRace.team_min_bet ? String(sourceRace.team_min_bet) : '',
+      racerMinBet: sourceRace.racer_min_bet ? String(sourceRace.racer_min_bet) : '',
+      teams: matchedTeams,
+      racers: matchedRacers
+    });
+
+    setSelectedRaceToCopy(raceId);
+    setCopyFeedback(`✓ Cloned full race #${sourceRace.id} (${matchedRacers.length} racers)`);
+    setTimeout(() => setCopyFeedback(''), 4000);
   };
 
   const handleCreateRace = async () => {
@@ -591,6 +710,9 @@ export function GlobalTimer() {
         return;
       }
       
+      if (newRace) {
+        setCreatedRaces(prev => [newRace, ...prev]);
+      }
       setShowCreateRacePanel(false);
       showConfirm('Race Created!', `The race "${raceForm.name}" is pending. Use START BIDDING to open it.`, () => {});
       return;
@@ -1370,6 +1492,34 @@ export function GlobalTimer() {
                                 <span className="text-mono" style={{ color: '#fff' }}>{pr.teams?.length || 0} Teams • {pr.racers?.length || 0} Racers</span>
                               </div>
                             </div>
+
+                            <div style={{ marginTop: '0.65rem', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '0.5rem', display: 'flex', justifyContent: 'flex-end' }}>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setRaceMode('CREATE');
+                                  applyCloneRace(pr.id.toString());
+                                }}
+                                className="text-mono"
+                                style={{
+                                  fontSize: '0.65rem',
+                                  padding: '0.25rem 0.65rem',
+                                  background: 'rgba(0, 255, 136, 0.1)',
+                                  border: '1px solid rgba(0, 255, 136, 0.3)',
+                                  color: '#00ff88',
+                                  borderRadius: '3px',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  fontWeight: 'bold'
+                                }}
+                                title="Duplicate this lineup to a new race"
+                              >
+                                <span>📋</span> DUPLICATE RACERS TO NEW RACE
+                              </button>
+                            </div>
                           </div>
                         );
                       })}
@@ -1381,6 +1531,104 @@ export function GlobalTimer() {
               {/* CREATE MODE: Race Name & Track */}
               {raceMode === 'CREATE' && (
                 <>
+                  {/* DUPLICATE RACERS / RACE TEMPLATE QUICK ACTION */}
+                  {createdRaces.length > 0 && (
+                    <div style={{
+                      padding: '0.75rem 1rem',
+                      background: 'linear-gradient(90deg, rgba(0, 255, 136, 0.06) 0%, rgba(242, 24, 24, 0.05) 100%)',
+                      border: '1px dashed rgba(0, 255, 136, 0.3)',
+                      borderRadius: '6px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: '0.75rem'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                        <span style={{ fontSize: '1.2rem' }}>📋</span>
+                        <div>
+                          <div className="text-mono" style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#fff', letterSpacing: '0.5px' }}>
+                            DUPLICATE RACERS FROM CREATED RACE
+                          </div>
+                          <div className="text-mono" style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
+                            Quickly copy racers or clone full settings from an existing race
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <select
+                          className="text-mono"
+                          value={selectedRaceToCopy}
+                          onChange={(e) => {
+                            setSelectedRaceToCopy(e.target.value);
+                            if (e.target.value) {
+                              applyCopyRacers(e.target.value, false);
+                            }
+                          }}
+                          style={{
+                            fontSize: '0.72rem',
+                            padding: '0.4rem 0.6rem',
+                            background: 'rgba(0, 0, 0, 0.85)',
+                            border: '1px solid rgba(0, 255, 136, 0.35)',
+                            color: '#fff',
+                            borderRadius: '4px',
+                            minWidth: '240px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <option value="">-- Select Created Race ({createdRaces.length} available) --</option>
+                          {createdRaces.map((cr: any) => (
+                            <option key={cr.id} value={cr.id.toString()}>
+                              Round #{cr.id}: {cr.name} {cr.track ? `[${cr.track}]` : ''} • ({cr.racers?.length || 0} racers)
+                            </option>
+                          ))}
+                        </select>
+
+                        {selectedRaceToCopy && (
+                          <div style={{ display: 'flex', gap: '0.35rem' }}>
+                            <button
+                              type="button"
+                              onClick={() => applyCopyRacers(selectedRaceToCopy, false)}
+                              className="text-mono"
+                              style={{
+                                fontSize: '0.65rem',
+                                padding: '0.4rem 0.75rem',
+                                background: '#00ff88',
+                                border: 'none',
+                                color: '#000',
+                                borderRadius: '4px',
+                                fontWeight: 'bold',
+                                cursor: 'pointer'
+                              }}
+                              title="Replace racer lineup with this race"
+                            >
+                              COPY RACERS ONLY
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => applyCloneRace(selectedRaceToCopy)}
+                              className="text-mono"
+                              style={{
+                                fontSize: '0.65rem',
+                                padding: '0.4rem 0.75rem',
+                                background: 'rgba(242, 24, 24, 0.2)',
+                                border: '1px solid var(--accent-primary)',
+                                color: 'var(--accent-secondary)',
+                                borderRadius: '4px',
+                                fontWeight: 'bold',
+                                cursor: 'pointer'
+                              }}
+                              title="Copy name, track, timers, min bets, and racers"
+                            >
+                              CLONE FULL RACE
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
                     <div>
                       <label className="text-mono" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold' }}>
@@ -1696,6 +1944,45 @@ export function GlobalTimer() {
                               </div>
                             </div>
 
+                            {/* Copy Teams from Created Race */}
+                            {createdRaces.some((cr: any) => cr.teams?.length > 0) && (
+                              <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.4rem',
+                                background: 'rgba(242, 24, 24, 0.05)',
+                                border: '1px solid rgba(242, 24, 24, 0.25)',
+                                borderRadius: '4px',
+                                padding: '0.35rem 0.5rem'
+                              }}>
+                                <span className="text-mono" style={{ fontSize: '0.65rem', color: 'var(--accent-secondary)', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+                                  🏎️ COPY TEAMS:
+                                </span>
+                                <select
+                                  className="text-mono"
+                                  value={selectedRaceToCopyTeams}
+                                  onChange={(e) => applyCopyTeams(e.target.value)}
+                                  style={{
+                                    flex: 1,
+                                    fontSize: '0.7rem',
+                                    padding: '0.25rem 0.4rem',
+                                    background: 'rgba(0,0,0,0.7)',
+                                    border: '1px solid rgba(255,255,255,0.15)',
+                                    color: '#fff',
+                                    borderRadius: '3px',
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  <option value="">-- Select race to copy teams --</option>
+                                  {createdRaces.filter((cr: any) => cr.teams?.length > 0).map((cr: any) => (
+                                    <option key={cr.id} value={cr.id.toString()}>
+                                      Round #{cr.id}: {cr.name} ({cr.teams?.length || 0} teams)
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
+
                             {/* Search bar */}
                             <div style={{ position: 'relative' }}>
                               <input
@@ -1836,6 +2123,104 @@ export function GlobalTimer() {
                                 )}
                               </div>
                             </div>
+
+                            {/* DUPLICATE / COPY RACERS FROM CREATED RACE */}
+                            {createdRaces.length > 0 && (
+                              <div style={{
+                                background: 'linear-gradient(135deg, rgba(0, 255, 136, 0.07) 0%, rgba(5, 20, 10, 0.4) 100%)',
+                                border: '1px solid rgba(0, 255, 136, 0.3)',
+                                borderRadius: '4px',
+                                padding: '0.45rem 0.65rem',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '0.35rem'
+                              }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <span className="text-mono" style={{ fontSize: '0.68rem', color: '#00ff88', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                    <span>📋</span> COPY RACERS FROM CREATED RACE
+                                  </span>
+                                  {copyFeedback && (
+                                    <span className="text-mono animate-in" style={{ fontSize: '0.62rem', color: '#00ff88', background: 'rgba(0, 255, 136, 0.15)', padding: '1px 6px', borderRadius: '3px', fontWeight: 'bold' }}>
+                                      {copyFeedback}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+                                  <select
+                                    className="text-mono"
+                                    value={selectedRaceToCopy}
+                                    onChange={(e) => {
+                                      setSelectedRaceToCopy(e.target.value);
+                                      if (e.target.value) {
+                                        applyCopyRacers(e.target.value, false);
+                                      }
+                                    }}
+                                    style={{
+                                      flex: 1,
+                                      fontSize: '0.72rem',
+                                      padding: '0.35rem 0.5rem',
+                                      background: 'rgba(5, 15, 10, 0.95)',
+                                      border: '1px solid rgba(0, 255, 136, 0.35)',
+                                      color: '#fff',
+                                      borderRadius: '3px',
+                                      outline: 'none',
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    <option value="">-- Select created race to copy racers ({createdRaces.length} available) --</option>
+                                    {createdRaces.map((cr: any) => (
+                                      <option key={cr.id} value={cr.id.toString()}>
+                                        Round #{cr.id}: {cr.name} {cr.track ? `[${cr.track}]` : ''} • ({cr.racers?.length || 0} racers)
+                                      </option>
+                                    ))}
+                                  </select>
+
+                                  {selectedRaceToCopy && (
+                                    <div style={{ display: 'flex', gap: '0.25rem' }}>
+                                      <button
+                                        type="button"
+                                        onClick={() => applyCopyRacers(selectedRaceToCopy, false)}
+                                        className="text-mono"
+                                        style={{
+                                          fontSize: '0.62rem',
+                                          padding: '0.35rem 0.55rem',
+                                          background: '#00ff88',
+                                          color: '#000',
+                                          border: 'none',
+                                          borderRadius: '3px',
+                                          cursor: 'pointer',
+                                          fontWeight: 'bold',
+                                          whiteSpace: 'nowrap'
+                                        }}
+                                        title="Replace selection with racers from this race"
+                                      >
+                                        REPLACE
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => applyCopyRacers(selectedRaceToCopy, true)}
+                                        className="text-mono"
+                                        style={{
+                                          fontSize: '0.62rem',
+                                          padding: '0.35rem 0.55rem',
+                                          background: 'rgba(255, 255, 255, 0.08)',
+                                          color: '#fff',
+                                          border: '1px solid rgba(255, 255, 255, 0.2)',
+                                          borderRadius: '3px',
+                                          cursor: 'pointer',
+                                          fontWeight: 'bold',
+                                          whiteSpace: 'nowrap'
+                                        }}
+                                        title="Append racers from this race to current selection"
+                                      >
+                                        + APPEND
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
 
                             {/* Search bar */}
                             <div style={{ position: 'relative' }}>
