@@ -136,8 +136,21 @@ export default function RaceResultPanel({
   const [currentRoundId, setCurrentRoundId] = useState<number>(1);
   const [loading, setLoading] = useState(false);
   
-  // Placement State
-  const [positions, setPositions] = useState<Record<string, string>>({});
+  // Placement State (Categorized & Auto-Persisted)
+  const [positionsByCategory, setPositionsByCategory] = useState<{
+    RACER: Record<string, string>;
+    TEAM: Record<string, string>;
+    MONTHLY: Record<string, string>;
+  }>({
+    RACER: {},
+    TEAM: {},
+    MONTHLY: {},
+  });
+
+  const positions = useMemo(() => {
+    return positionsByCategory[activeCategory] || {};
+  }, [positionsByCategory, activeCategory]);
+
   const [quickFinishMode, setQuickFinishMode] = useState(true); // Default true for fastest entry
   
   // Search & Filter
@@ -230,6 +243,54 @@ export default function RaceResultPanel({
 
         setTeamStandings(calculatedTeams);
       }
+
+      // 6. Restore drafts from localStorage or Supabase results table
+      if (typeof window !== 'undefined') {
+        try {
+          const raw = localStorage.getItem(`race_settlement_draft_${roundId}`);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === 'object') {
+              setPositionsByCategory((prev) => ({
+                ...prev,
+                ...parsed,
+              }));
+            }
+          } else {
+            // Check Supabase results table if previous results exist
+            const { data: dbResults } = await supabase
+              .from('results')
+              .select('racer_id, position, is_dnf, is_dsq, category')
+              .eq('round_id', roundId);
+
+            if (dbResults && dbResults.length > 0) {
+              const loaded: {
+                RACER: Record<string, string>;
+                TEAM: Record<string, string>;
+                MONTHLY: Record<string, string>;
+              } = {
+                RACER: {},
+                TEAM: {},
+                MONTHLY: {},
+              };
+              dbResults.forEach((r: any) => {
+                const cat = (
+                  r.category === 'TEAM' || r.category === 'MONTHLY' ? r.category : 'RACER'
+                ) as 'RACER' | 'TEAM' | 'MONTHLY';
+                if (r.is_dnf) loaded[cat][r.racer_id] = 'DNF';
+                else if (r.is_dsq) loaded[cat][r.racer_id] = 'DSQ';
+                else if (r.position) loaded[cat][r.racer_id] = String(r.position);
+              });
+              setPositionsByCategory((prev) => ({
+                ...prev,
+                ...loaded,
+              }));
+            }
+          }
+        } catch (e) {
+          console.error('Error loading draft positions:', e);
+        }
+      }
     } catch (err) {
       console.error('Failed to load RaceResultPanel data:', err);
     } finally {
@@ -240,7 +301,6 @@ export default function RaceResultPanel({
   useEffect(() => {
     if (isOpen) {
       loadPanelData();
-      setPositions({});
       setSearchQuery('');
     }
   }, [isOpen, loadPanelData]);
@@ -287,34 +347,54 @@ export default function RaceResultPanel({
   // Quick Place: Click card to assign next available rank
   const handleCardClick = (racerId: string) => {
     if (!quickFinishMode) return;
-    setPositions((prev) => {
-      const current = prev[racerId];
+    setPositionsByCategory((prevAll) => {
+      const currentCatMap = { ...(prevAll[activeCategory] || {}) };
+      const current = currentCatMap[racerId];
       if (current) {
-        // If already assigned, remove it (freeing up the number)
-        const updated = { ...prev };
-        delete updated[racerId];
-        return updated;
+        delete currentCatMap[racerId];
+      } else {
+        const nextRankStr = String(nextAvailableRank);
+        Object.keys(currentCatMap).forEach((id) => {
+          if (currentCatMap[id] === nextRankStr) {
+            delete currentCatMap[id];
+          }
+        });
+        currentCatMap[racerId] = nextRankStr;
       }
-      // Assign the next available rank
-      return {
-        ...prev,
-        [racerId]: String(nextAvailableRank),
-      };
+      const nextAll = { ...prevAll, [activeCategory]: currentCatMap };
+      if (typeof window !== 'undefined' && currentRoundId) {
+        try {
+          localStorage.setItem(`race_settlement_draft_${currentRoundId}`, JSON.stringify(nextAll));
+        } catch {}
+      }
+      return nextAll;
     });
   };
 
-  // Direct position selection
+  // Direct position selection with duplicate position prevention
   const setRacerPosition = (racerId: string, posValue: string) => {
-    setPositions((prev) => {
+    setPositionsByCategory((prevAll) => {
+      const currentCatMap = { ...(prevAll[activeCategory] || {}) };
       if (!posValue) {
-        const next = { ...prev };
-        delete next[racerId];
-        return next;
+        delete currentCatMap[racerId];
+      } else {
+        // If assigning a specific numeric rank (not DNF/DSQ), remove it from any other racer who currently holds it
+        if (posValue !== 'DNF' && posValue !== 'DSQ') {
+          Object.keys(currentCatMap).forEach((id) => {
+            if (id !== racerId && currentCatMap[id] === posValue) {
+              delete currentCatMap[id];
+            }
+          });
+        }
+        currentCatMap[racerId] = posValue;
       }
-      return {
-        ...prev,
-        [racerId]: posValue,
-      };
+      const nextAll = { ...prevAll, [activeCategory]: currentCatMap };
+      if (typeof window !== 'undefined' && currentRoundId) {
+        try {
+          localStorage.setItem(`race_settlement_draft_${currentRoundId}`, JSON.stringify(nextAll));
+        } catch {}
+      }
+      return nextAll;
     });
   };
 
@@ -325,25 +405,41 @@ export default function RaceResultPanel({
       showError('No Unassigned Drivers', 'All drivers on the grid already have a position assigned!');
       return;
     }
-    setPositions((prev) => {
-      const next = { ...prev };
+    setPositionsByCategory((prevAll) => {
+      const currentCatMap = { ...(prevAll[activeCategory] || {}) };
       categoryRacers.forEach((r) => {
-        if (!next[r.id]) {
-          next[r.id] = 'DNF';
+        if (!currentCatMap[r.id]) {
+          currentCatMap[r.id] = 'DNF';
         }
       });
-      return next;
+      const nextAll = { ...prevAll, [activeCategory]: currentCatMap };
+      if (typeof window !== 'undefined' && currentRoundId) {
+        try {
+          localStorage.setItem(`race_settlement_draft_${currentRoundId}`, JSON.stringify(nextAll));
+        } catch {}
+      }
+      return nextAll;
     });
     showSuccess('Grid Auto-Filled', `Marked ${unassignedCount} remaining unranked drivers as DNF!`);
   };
 
-  // Reset all assigned positions
+  // Reset all assigned positions for active category
   const handleClearAll = () => {
     if (Object.keys(positions).length === 0) return;
     showConfirm(
       'CLEAR POSITIONS',
-      'Are you sure you want to clear all assigned positions for this race?',
-      () => setPositions({}),
+      `Are you sure you want to clear all assigned positions for ${activeCategory} in this race?`,
+      () => {
+        setPositionsByCategory((prevAll) => {
+          const nextAll = { ...prevAll, [activeCategory]: {} };
+          if (typeof window !== 'undefined' && currentRoundId) {
+            try {
+              localStorage.setItem(`race_settlement_draft_${currentRoundId}`, JSON.stringify(nextAll));
+            } catch {}
+          }
+          return nextAll;
+        });
+      },
       true
     );
   };
@@ -745,6 +841,17 @@ export default function RaceResultPanel({
       // Await final parallel tasks
       await Promise.all(phase2Tasks);
 
+      // Clear saved draft for this category
+      setPositionsByCategory((prevAll) => {
+        const nextAll = { ...prevAll, [activeCategory]: {} };
+        if (typeof window !== 'undefined' && currentRoundId) {
+          try {
+            localStorage.setItem(`race_settlement_draft_${currentRoundId}`, JSON.stringify(nextAll));
+          } catch {}
+        }
+        return nextAll;
+      });
+
       // Finished!
       setIsSettling(false);
       onClose();
@@ -960,10 +1067,7 @@ export default function RaceResultPanel({
           }}
         >
           <button
-            onClick={() => {
-              setActiveCategory('RACER');
-              setPositions({});
-            }}
+            onClick={() => setActiveCategory('RACER')}
             style={{
               padding: '0.65rem 1.4rem',
               borderRadius: '6px',
@@ -1000,10 +1104,7 @@ export default function RaceResultPanel({
           </button>
 
           <button
-            onClick={() => {
-              setActiveCategory('TEAM');
-              setPositions({});
-            }}
+            onClick={() => setActiveCategory('TEAM')}
             style={{
               padding: '0.65rem 1.4rem',
               borderRadius: '6px',
@@ -1040,10 +1141,7 @@ export default function RaceResultPanel({
           </button>
 
           <button
-            onClick={() => {
-              setActiveCategory('MONTHLY');
-              setPositions({});
-            }}
+            onClick={() => setActiveCategory('MONTHLY')}
             style={{
               padding: '0.65rem 1.4rem',
               borderRadius: '6px',
@@ -1188,6 +1286,24 @@ export default function RaceResultPanel({
                   </button>
 
                   <button
+                    onClick={() => loadPanelData()}
+                    style={{
+                      padding: '0.5rem 0.75rem',
+                      borderRadius: '6px',
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: '0.78rem',
+                      cursor: 'pointer',
+                      border: '1px solid rgba(0, 255, 136, 0.4)',
+                      background: 'rgba(0, 255, 136, 0.1)',
+                      color: '#00ff88',
+                      transition: 'all 0.15s',
+                    }}
+                    title="Refresh telemetry without losing your assigned positions"
+                  >
+                    🔄 REFRESH DATA
+                  </button>
+
+                  <button
                     onClick={handleClearAll}
                     style={{
                       padding: '0.5rem 0.75rem',
@@ -1202,7 +1318,7 @@ export default function RaceResultPanel({
                     }}
                     title="Clear all assigned positions"
                   >
-                    🔄 RESET
+                    🗑️ RESET
                   </button>
 
                   <select
@@ -1636,7 +1752,7 @@ export default function RaceResultPanel({
                       >
                         {/* 1-click Podium Pills */}
                         <button
-                          onClick={() => setRacerPosition(racer.id, '1')}
+                          onClick={() => setRacerPosition(racer.id, isP1 ? '' : '1')}
                           style={{
                             padding: '0.35rem 0.6rem',
                             borderRadius: '4px',
@@ -1648,13 +1764,13 @@ export default function RaceResultPanel({
                             background: isP1 ? '#ffd700' : 'rgba(255, 215, 0, 0.08)',
                             color: isP1 ? '#000' : '#ffd700',
                           }}
-                          title="Assign 1st Place"
+                          title="Assign 1st Place (click again to toggle off)"
                         >
                           P1 🥇
                         </button>
 
                         <button
-                          onClick={() => setRacerPosition(racer.id, '2')}
+                          onClick={() => setRacerPosition(racer.id, isP2 ? '' : '2')}
                           style={{
                             padding: '0.35rem 0.6rem',
                             borderRadius: '4px',
@@ -1666,13 +1782,13 @@ export default function RaceResultPanel({
                             background: isP2 ? '#cbd5e1' : 'rgba(255, 255, 255, 0.08)',
                             color: isP2 ? '#000' : '#cbd5e1',
                           }}
-                          title="Assign 2nd Place"
+                          title="Assign 2nd Place (click again to toggle off)"
                         >
                           P2 🥈
                         </button>
 
                         <button
-                          onClick={() => setRacerPosition(racer.id, '3')}
+                          onClick={() => setRacerPosition(racer.id, isP3 ? '' : '3')}
                           style={{
                             padding: '0.35rem 0.6rem',
                             borderRadius: '4px',
@@ -1684,7 +1800,7 @@ export default function RaceResultPanel({
                             background: isP3 ? '#d97706' : 'rgba(217, 119, 6, 0.08)',
                             color: isP3 ? '#fff' : '#d97706',
                           }}
-                          title="Assign 3rd Place"
+                          title="Assign 3rd Place (click again to toggle off)"
                         >
                           P3 🥉
                         </button>
@@ -1728,6 +1844,13 @@ export default function RaceResultPanel({
                           <option value="">Pos...</option>
                           {Array.from({ length: 45 }, (_, i) => String(i + 1))
                             .concat(['DNF', 'DSQ'])
+                            .filter(
+                              (opt) =>
+                                opt === 'DNF' ||
+                                opt === 'DSQ' ||
+                                opt === assignedPos ||
+                                !Object.values(positions).includes(opt)
+                            )
                             .map((opt) => (
                               <option key={opt} value={opt}>
                                 {opt}
