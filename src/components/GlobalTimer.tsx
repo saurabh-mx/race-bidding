@@ -496,12 +496,14 @@ export function GlobalTimer() {
   const isStreamerMode = pathname === '/streamer';
   const isPanelMode = pathname === '/streamer/panel';
   const isStreamIframe = searchParams?.get('stream') === 'true';
+  const isManagementMode = pathname === '/management' || pathname?.startsWith('/management/');
   
   if (isStreamIframe || isPanelMode) return null;
 
   return (
     <>
-      <div style={{
+      {!isManagementMode && (
+        <div style={{
         position: 'fixed',
         ...(isStreamerMode ? { top: 0 } : { bottom: 0 }),
         left: 0,
@@ -662,7 +664,8 @@ export function GlobalTimer() {
             </div>
           </div>
         )}
-      </div>
+        </div>
+      )}
 
       {/* ULTRA-FAST RACE RESULT PANEL */}
       <RaceResultPanel
