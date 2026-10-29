@@ -1,1 +1,0 @@
-ALTER TABLE racers ADD COLUMN IF NOT EXISTS tournament_points INT DEFAULT 0;

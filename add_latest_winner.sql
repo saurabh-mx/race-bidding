@@ -1,1 +1,0 @@
-ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS latest_winner TEXT DEFAULT 'NONE';
